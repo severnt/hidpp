@@ -22,7 +22,7 @@
 #include <stdexcept>
 #include <cstdint>
 
-#include <string> // Had to add this to for the `_error_message` declaration to compile under macos
+#include <string> // Had to add this to for the `_error_message` declaration to compile under macOS
 
 namespace HIDPP10
 {

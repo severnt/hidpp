@@ -20,6 +20,7 @@
 #define LIBHIDPP_HIDPP20_UNSUPPORTED_FEATURE_H
 
 #include <stdexcept>
+#include <string> // Had to add this for std::string to compile under macOS
 
 namespace HIDPP20
 {
