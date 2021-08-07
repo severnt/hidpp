@@ -30,4 +30,5 @@ using namespace HID;
 
 struct DeviceMonitor::PrivateImpl
 {
+	
 };
