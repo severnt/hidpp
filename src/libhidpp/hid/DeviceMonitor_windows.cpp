@@ -37,11 +37,15 @@ extern "C" {
 
 using namespace HID;
 
+// Private
+
 struct DeviceMonitor::PrivateImpl
 {
 	std::mutex mutex;
 	std::condition_variable cond;
 };
+
+// Constructor & Destructor
 
 DeviceMonitor::DeviceMonitor ():
 	_p (std::make_unique<PrivateImpl> ())
@@ -51,6 +55,8 @@ DeviceMonitor::DeviceMonitor ():
 DeviceMonitor::~DeviceMonitor ()
 {
 }
+
+// Interface
 
 void DeviceMonitor::enumerate ()
 {
