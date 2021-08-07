@@ -20,7 +20,7 @@
 #define LIBHIDPP_HIDPP10_DEFS_H
 
 #include <cstdint>
-#include <stdlib.h> // Had to add this for usages of std::size_t to compile
+#include <stdlib.h> // Had to add this for usages of std::size_t to compile under macOS
 
 namespace HIDPP10
 {
