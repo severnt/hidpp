@@ -74,8 +74,8 @@ if("${HID_BACKEND}" STREQUAL "linux")
 elseif("${HID_BACKEND}" STREQUAL "windows")
 	target_link_libraries(hidpp setupapi hid cfgmgr32)
 elseif("${HID_BACKEND}" STREQUAL "macos")
-	find_library(FOUNDATION_LIBRARY Foundation)
-	target_link_libraries(hidpp ${FOUNDATION_LIBRARY}) # Src: https://stackoverflow.com/questions/2908640/how-to-add-a-framework-to-cmake
+	find_library(MAC_LIBRARY Foundation)
+	target_link_libraries(hidpp ${MAC_LIBRARY}) # Src: https://stackoverflow.com/questions/2908640/how-to-add-a-framework-to-cmake
 endif()
 
 install(DIRECTORY "./" DESTINATION "include/hidpp"

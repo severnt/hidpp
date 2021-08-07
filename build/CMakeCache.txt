@@ -213,14 +213,14 @@ DOXYGEN_DOT_EXECUTABLE:FILEPATH=/usr/local/bin/dot
 //Doxygen documentation generation tool (http://www.doxygen.org)
 DOXYGEN_EXECUTABLE:FILEPATH=/usr/local/bin/doxygen
 
-//Path to a library.
-FOUNDATION_LIBRARY:FILEPATH=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.1.sdk/System/Library/Frameworks/Foundation.framework
-
 //Backend used for accessing HID devices
 HID_BACKEND:STRING=macos
 
 //Install udev rules for user access to HID++ devices
 INSTALL_UDEV_RULES:BOOL=OFF
+
+//Path to a library.
+MAC_LIBRARY:FILEPATH=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.1.sdk/System/Library/Frameworks/Foundation.framework
 
 //pkg-config executable
 PKG_CONFIG_EXECUTABLE:FILEPATH=/usr/local/bin/pkg-config

@@ -23,12 +23,39 @@
 #include <string>
 
 extern "C" {
-#include <Foundation/Foundation.h>
+// #include <IOKit/hidsystem/>
 }
 
 using namespace HID;
 
+// Private
+
 struct DeviceMonitor::PrivateImpl
 {
-	
 };
+
+// Constructor & Destructor
+
+DeviceMonitor::DeviceMonitor ():
+	_p (std::make_unique<PrivateImpl> ())
+{
+}
+
+DeviceMonitor::~DeviceMonitor ()
+{
+}
+
+// Interface
+
+void DeviceMonitor::enumerate ()
+{
+
+}
+
+void DeviceMonitor::run ()
+{
+}
+
+void DeviceMonitor::stop ()
+{
+}

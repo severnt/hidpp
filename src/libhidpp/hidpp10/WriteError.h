@@ -22,6 +22,8 @@
 #include <stdexcept>
 #include <cstdint>
 
+#include <string> // Had to add this to for the `_error_message` declaration to compile under macos
+
 namespace HIDPP10
 {
 

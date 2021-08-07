@@ -30,8 +30,9 @@
 #include <cstring>
 #include <cassert>
 
-extern "C" {
-#include <Foundation/Foundation.h>
+extern "C"
+{
+    // #include <Foundation/Foundation.h>
 }
 
 using namespace HID;
@@ -45,146 +46,63 @@ struct RawDevice::PrivateImpl
 
 // Private constructor
 
-RawDevice::RawDevice ():
-	_p (std::make_unique<PrivateImpl> ())
+RawDevice::RawDevice() : _p(std::make_unique<PrivateImpl>())
 {
 }
 
 // Public constructors
 
-RawDevice::RawDevice (const std::string &path):
-	_p (std::make_unique<PrivateImpl> ())
+RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>())
 {
-	_p->fd = ::open (path.c_str (), O_RDWR);
-	if (_p->fd == -1) {
-		throw std::system_error (errno, std::system_category (), "open");
-	}
-
-	struct hidraw_devinfo di;
-	if (-1 == ::ioctl (_p->fd, HIDIOCGRAWINFO, &di)) {
-		int err = errno;
-		::close (_p->fd);
-		throw std::system_error (err, std::system_category (), "HIDIOCGRAWINFO");
-	}
-	_vendor_id = di.vendor;
-	_product_id = di.product;
-
-	char string[256];
-	int ret;
-	if (-1 == (ret = ::ioctl (_p->fd, HIDIOCGRAWNAME(sizeof(string)), string))) {
-		int err = errno;
-		::close (_p->fd);
-		throw std::system_error (err, std::system_category (), "HIDIOCGRAWNAME");
-	}
-	_name.assign (string, ret-1); // HIDIOCGRAWNAME result includes null terminator
-
-	struct hidraw_report_descriptor rdesc;
-	if (-1 == ::ioctl (_p->fd, HIDIOCGRDESCSIZE, &rdesc.size)) {
-		int err = errno;
-		::close (_p->fd);
-		throw std::system_error (err, std::system_category (), "HIDIOCGRDESCSIZE");
-	}
-	if (-1 == ::ioctl (_p->fd, HIDIOCGRDESC, &rdesc)) {
-		int err = errno;
-		::close (_p->fd);
-		throw std::system_error (err, std::system_category (), "HIDIOCGRDESC");
-	}
-	_report_desc = ReportDescriptor (rdesc.value, rdesc.value+rdesc.size);
-
-	if (-1 == ::pipe (_p->pipe)) {
-		int err = errno;
-		::close (_p->fd);
-		throw std::system_error (err, std::system_category (), "pipe");
-	}
 }
 
-RawDevice::RawDevice (const RawDevice &other):
-	_p (std::make_unique<PrivateImpl> ()),
-	_vendor_id (other._vendor_id), _product_id (other._product_id),
-	_name (other._name),
-	_report_desc (other._report_desc)
+RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>()),
+                                               _vendor_id(other._vendor_id), _product_id(other._product_id),
+                                               _name(other._name),
+                                               _report_desc(other._report_desc)
 {
-	_p->fd = ::dup (other._p->fd);
-	if (-1 == _p->fd) {
-		throw std::system_error (errno, std::system_category (), "dup");
-	}
-	if (-1 == ::pipe (_p->pipe)) {
-		int err = errno;
-		::close (_p->fd);
-		throw std::system_error (err, std::system_category (), "pipe");
-	}
+    // _p->fd = ::dup (other._p->fd);
+    // if (-1 == _p->fd) {
+    // 	throw std::system_error (errno, std::system_category (), "dup");
+    // }
+    // if (-1 == ::pipe (_p->pipe)) {
+    // 	int err = errno;
+    // 	::close (_p->fd);
+    // 	throw std::system_error (err, std::system_category (), "pipe");
+    // }
 }
 
-RawDevice::RawDevice (RawDevice &&other):
-	_p (std::make_unique<PrivateImpl> ()),
-	_vendor_id (other._vendor_id), _product_id (other._product_id),
-	_name (std::move (other._name)),
-	_report_desc (std::move (other._report_desc))
+RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this constructor and the one above?
+
+                                          _p(std::make_unique<PrivateImpl>()),
+                                          _vendor_id(other._vendor_id), _product_id(other._product_id),
+                                          _name(std::move(other._name)),
+                                          _report_desc(std::move(other._report_desc))
 {
-	_p->fd = other._p->fd;
-	_p->pipe[0] = other._p->pipe[0];
-	_p->pipe[1] = other._p->pipe[1];
-	other._p->fd = other._p->pipe[0] = other._p->pipe[1] = -1;
+    // _p->fd = other._p->fd;
+    // _p->pipe[0] = other._p->pipe[0];
+    // _p->pipe[1] = other._p->pipe[1];
+    // other._p->fd = other._p->pipe[0] = other._p->pipe[1] = -1;
 }
 
 // Destructor
 
-RawDevice::~RawDevice ()
+RawDevice::~RawDevice()
 {
-	if (_p->fd != -1) {
-		::close (_p->fd);
-		::close (_p->pipe[0]);
-		::close (_p->pipe[1]);
-	}
 }
 
 // Interface
 
-int RawDevice::writeReport (const std::vector<uint8_t> &report)
+int RawDevice::writeReport(const std::vector<uint8_t> &report)
 {
-	int ret = write (_p->fd, report.data (), report.size ());
-	if (ret == -1) {
-		throw std::system_error (errno, std::system_category (), "write");
-	}
-	Log::debug ("report").printBytes ("Send HID report:", report.begin (), report.end ());
-	return ret;
+    return 0;
 }
 
-int RawDevice::readReport (std::vector<uint8_t> &report, int timeout)
+int RawDevice::readReport(std::vector<uint8_t> &report, int timeout)
 {
-	int ret;
-	timeval to = { timeout/1000, (timeout%1000) * 1000 };
-	fd_set fds;
-	do {
-		FD_ZERO (&fds);
-		FD_SET (_p->fd, &fds);
-		FD_SET (_p->pipe[0], &fds);
-		ret = select (std::max (_p->fd, _p->pipe[0])+1,
-				&fds, nullptr, nullptr,
-				(timeout < 0 ? nullptr : &to));
-	} while (ret == -1 && errno == EINTR);
-	if (ret == -1)
-		throw std::system_error (errno, std::system_category (), "select");
-	if (FD_ISSET (_p->fd, &fds)) {
-		ret = read (_p->fd, report.data (), report.size ());
-		if (ret == -1)
-			throw std::system_error (errno, std::system_category (), "read");
-		report.resize (ret);
-		Log::debug ("report").printBytes ("Recv HID report:", report.begin (), report.end ());
-		return ret;
-	}
-	if (FD_ISSET (_p->pipe[0], &fds)) {
-		char c;
-		ret = read (_p->pipe[0], &c, sizeof (char));
-		if (ret == -1)
-			throw std::system_error (errno, std::system_category (), "read pipe");
-	}
-	return 0;
+    return 0;
 }
 
-void RawDevice::interruptRead ()
+void RawDevice::interruptRead()
 {
-	char c = 0;
-	if (-1 == write (_p->pipe[1], &c, sizeof (char)))
-		throw std::system_error (errno, std::system_category (), "write pipe");
 }
