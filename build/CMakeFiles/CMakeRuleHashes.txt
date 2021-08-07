@@ -1,0 +1,2 @@
+# Hashes of file build rules.
+d067c9e134c643e1b0102ec4b6a8e1d2 doc/libhidpp/CMakeFiles/doc
