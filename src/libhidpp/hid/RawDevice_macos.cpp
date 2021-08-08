@@ -29,14 +29,14 @@
 #include <set>
 #include <cstring>
 #include <cassert>
-#include "macos/macOSUtility.h"
-
-extern "C" {
-#include <IOKit/IOKitLib.h>
-#include <IOKit/hid/IOHIDDevice.h>
-};
+#include "macos/Utility_macos.h"
 
 using namespace HID;
+
+extern "C" { // This needs to be declared after `using namespace HID` for some reason.
+#include <IOKit/IOKitLib.h>
+#include <IOKit/hid/IOHIDDevice.h>
+}
 
 // PrivateImpl
 //  Why do we use the PrivateImpl struct instead of private member variables?
@@ -45,12 +45,8 @@ struct RawDevice::PrivateImpl
 {
     IOHIDDeviceRef iohidDevice;
 
-    // readReport helper variables
-    struct readResult {
-        uint8_t *   report;
-        CFIndex     reportLength;
-    };
-    bool readHasTimedOut;
+    CFIndex maxInputReportSize;
+    CFIndex maxOutputReportSize;
 };
 
 // Private constructor
@@ -67,20 +63,16 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // Construct device from path
 
     // Declare vars
-
     kern_return_t kr;
 
     // Convert path to IOKit
-
     io_string_t ioPath;
-    macOSUtility::stringToIOString(path, ioPath);
+    Utility_macos::stringToIOString(path, ioPath);
 
     // Get registryEntry from path
-
     const io_registry_entry_t registryEntry = IORegistryEntryFromPath(kIOMasterPortDefault, ioPath);
 
     // Get service from registryEntry
-
     uint64_t entryID;
     kr = IORegistryEntryGetRegistryEntryID(registryEntry, &entryID);
     if (kr != KERN_SUCCESS) {
@@ -91,19 +83,23 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // ^ TODO: Check that the service is valid
 
     // Create IOHIDDevice from service
-
     IOHIDDeviceRef device = IOHIDDeviceCreate(kCFAllocatorDefault, service);
 
-    // Store IOHIDDevice in self
+    // Open device
+    IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); //  Necessary to change the state of the device
 
+    // Store IOHIDDevice in self
     _p->iohidDevice = device;
 
-    // Fill up other member variables
+    // Fill up public member variables
+    _vendor_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDVendorIDKey));
+    _product_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDProductIDKey));
+    _name = Utility_macos::IOHIDDeviceGetStringProperty(device, CFSTR(kIOHIDProductKey));
+    _report_desc = Utility_macos::IOHIDDeviceGetReportDescriptor(device);
 
-    _vendor_id = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDVendorIDKey));
-    _product_id = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductIDKey));
-    _name = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductKey));
-    _report_desc = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDReportDescriptorKey));
+    // Fill up private member variables
+    _p->maxInputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxInputReportSizeKey));
+    _p->maxOutputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxOutputReportSizeKey));
 
     // TODO: Release stuff
 }
@@ -141,7 +137,7 @@ RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this 
 
 RawDevice::~RawDevice()
 {
-    IOHIDDeviceClose(_p->iohidDevice); // Don't think this is necessary
+    IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone);
 }
 
 // Interface
@@ -150,14 +146,30 @@ RawDevice::~RawDevice()
 
 int RawDevice::writeReport(const std::vector<uint8_t> &report)
 {
+    //  See https://developer.apple.com/library/archive/technotes/tn2187/_index.html 
+    //      for info on how to use IOHID input report functions and more.
 
-    IOReturn r = IOHIDDeviceSetReport(_p->iohidDevice, kIOHIDReportTypeOutput, report[0], report.data(), report.size())
-    // ^ I'm not sure about these parameters at all
+    // Guard report size
+    if (report.size() > _p->maxOutputReportSize) {
+        // TODO: Return error
+    }
 
+    // Gather args for report sending
+    IOHIDDeviceRef device = _p->iohidDevice;
+    IOHIDReportType reportType = kIOHIDReportTypeOutput; // Not sure if correct
+    CFIndex reportID = report[0];
+    const uint8_t *rawReport = report.data();
+    CFIndex reportLength = report.size();
+
+    // Send report
+    IOReturn r = IOHIDDeviceSetReport(device, reportType, reportID, rawReport, reportLength);
+
+    // Return error code
     if (r != kIOReturnSuccess) {
         // TODO: Return some meaningful error code
     }
 
+    // Return success
     return 0;
 }
 
@@ -166,43 +178,46 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout)
 {
 
-    // Convert from timeout arg to IOHID-compatible timeoutCF
-
+    // Convert timeout
     CFTimeInterval timeoutCF;
-    if timeout < 0 {
+    if (timeout < 0) {
         timeoutCF = DBL_MAX; // A negative timeout means no time out. This should be close enough.
     } else {
-        timeoutCF = timeout / 1000.0 // timeoutCF is in seconds, whereas timeout is in ms.
+        timeoutCF = timeout / 1000.0; // timeoutCF is in s, timeout is in ms.
     }
 
-    IOReturn r = IOHIDDeviceGetReportWithCallback(_p->iohidDevice, kIOHIDReportTypeInput, report[0], report.data(), report.size(), timeoutCF, readCallback, NULL);
-    // ^ Not sure about these parameters
+    // Schedule device with runloop
+    //  Necessary for asynch APIs to work
+    // IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, RunLoopGet)
 
-    iohiddevicereportcallba
+    // // Init report values
 
-    if (r != kIOReturnSuccess) {
-        // TODO: Return some meaningful error code
-    }
+    // bool readHasTimedOut = false;
 
-    return 0;
+    // // Allocate buffers
+
+    // uint8_t reportBuffer[1024];
+    // CFIndex reportLengthBuffer;
+
+    // // Query report
+
+    // IOReturn r = IOHIDDeviceGetReportWithCallback(_p->iohidDevice, kIOHIDReportTypeInput, report[0], &reportBuffer, &reportLengthBuffer, timeoutCF, NULL, NULL);
+    // // ^ Not sure about these parameters
+    // // This function is blocking.
+    // // Apple docs say this functions should only be used for feature reports.
+
+    // // TODO: Check if timed out
+
+    // if (r != kIOReturnSuccess) {
+    //     // TODO: Return some meaningful error code
+    // }
+
+    // // Return
+
+    // report = std::vector<uint8_t>(&reportBuffer[0], &reportBuffer[0] + reportLengthBuffer);
+    // return reportLengthBuffer;
 }
 
 void RawDevice::interruptRead()
 {
-}
-
-// readReport helper functions
-
-void RawDevice::readCallback(   void * _Nullable        context,
-                                IOReturn                result, 
-                                void * _Nullable        sender,
-                                IOHIDReportType         type, 
-                                uint32_t                reportID,
-                                uint8_t *               report, 
-                                CFIndex                 reportLength) {
-    
-    if (!_p->readHasTimedOut) {
-        _p->readResult->report = report;
-        _p->readResult->reportLength = reportLength;
-    }
 }

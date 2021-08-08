@@ -17,16 +17,25 @@
  *
  */
 
+#include <string.h>
+#include "../RawDevice.h"
+
 extern "C" {
-    #include <string.h>
     #include <IOKit/IOKitLib.h>
+    #include <IOKit/hid/IOHIDDevice.h>
+    #include <CoreFoundation/CFNumber.h>
 }
 
-class macOSUtility {
+class Utility_macos {
 
 public:
-    void stringToIOString(std::string string, io_string_t &ioString) {
-        strcpy(ioString, string.c_str());
-    }
+    static void stringToIOString(std::string string, io_string_t &ioString);
 
-}
+    static long CFNumberToInt(CFNumberRef cfNumber);
+    static std::string CFStringToString(CFStringRef cfString);
+    static HID::ReportDescriptor CFDataToByteVector(CFDataRef cfData);
+
+    static long IOHIDDeviceGetIntProperty(IOHIDDeviceRef device, CFStringRef key);
+    static std::string IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, CFStringRef key);
+    static HID::ReportDescriptor IOHIDDeviceGetReportDescriptor(IOHIDDeviceRef device);
+};
