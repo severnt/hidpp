@@ -161,11 +161,10 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
 // readReport
 
-int RawDevice::readReport(std::vector<uint8_t> &report, int timeout)
-{
+int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Schedule device with runloop
-    //  Necessary for async APIs to work
+    //  Necessary for async API (callback) to work
 
     _p->inputReportRunLoop = CFRunLoopGetCurrent();
     IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
@@ -203,8 +202,8 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout)
     if (timeout < 0) { // Negative `timeout` means no timeout
         _p->inputReportBlocker.wait(lock);
     } else {
-        std::chrono::milliseconds duration(timeout);
-        _p->inputReportBlocker.wait_for(lock, duration);
+        std::chrono::milliseconds cppTimeout(timeout);
+        _p->inputReportBlocker.wait_for(lock, cppTimeout);
     }
 
     // Stop listening for reports
@@ -233,4 +232,5 @@ RawDevice::~RawDevice()
 {
     IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes); // Not sure if necessary
     IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone); // Not sure if necessary
+    CFRelease(_p->iohidDevice); // Not sure if necessary
 }

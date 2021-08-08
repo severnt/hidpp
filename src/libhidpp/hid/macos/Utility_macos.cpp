@@ -33,6 +33,10 @@ void Utility_macos::stringToIOString(std::string string, io_string_t &ioString) 
 
 // Convert Cocoa -> Cpp
 
+const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
+    return CFStringToString((CFStringRef)IOHIDDeviceGetProperty(device, CFSTR(kIOPathKey))).c_str();
+}
+
 long Utility_macos::CFNumberToInt(CFNumberRef cfNumber) {
 
     long result;
@@ -67,7 +71,7 @@ HID::ReportDescriptor Utility_macos::CFDataToByteVector(CFDataRef cfData) {
     return byteVector;
 }
 
-// Convenience wrappers Cocoa -> Cpp
+// Convenience wrappers IOHIDDeviceGetProperty
 
 long Utility_macos::IOHIDDeviceGetIntProperty(IOHIDDeviceRef device, CFStringRef key) {
     return CFNumberToInt((CFNumberRef)IOHIDDeviceGetProperty(device, key));
@@ -81,6 +85,7 @@ HID::ReportDescriptor Utility_macos::IOHIDDeviceGetReportDescriptor(IOHIDDeviceR
     CFTypeRef value = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDReportDescriptorKey));
     return CFDataToByteVector((CFDataRef)value); // typedef std::vector<uint8_t> ReportDescriptor
 }
+
 
 
 
