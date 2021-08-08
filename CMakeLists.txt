@@ -30,7 +30,7 @@ elseif("${HID_BACKEND}" STREQUAL "windows")
 elseif("${HID_BACKEND}" STREQUAL "macos") # Suppress warning I don't understand
 	set(CMAKE_MACOSX_RPATH ON)
 	include_directories(/usr/local/include) # Necessary to prevent `fatal error: 'tinyxml2.h' file not found`
-
+	link_directories(${TINYXML2_LIBRARY_DIRS})
 else()
 	message(FATAL_ERROR "HID_BACKEND is invalid.")
 endif()
