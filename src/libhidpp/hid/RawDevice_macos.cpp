@@ -29,11 +29,12 @@
 #include <set>
 #include <cstring>
 #include <cassert>
+#include "macos/macOSUtility.h"
 
-extern "C"
-{
-    // #include <Foundation/Foundation.h>
-}
+extern "C" {
+#include <IOKit/IOKitLib.h>
+#include <IOKit/hid/IOHIDDevice.h>
+};
 
 using namespace HID;
 
@@ -42,18 +43,69 @@ using namespace HID;
 
 struct RawDevice::PrivateImpl
 {
+    IOHIDDeviceRef iohidDevice;
+
+    // readReport helper variables
+    struct readResult {
+        uint8_t *   report;
+        CFIndex     reportLength;
+    };
+    bool readHasTimedOut;
 };
 
 // Private constructor
 
-RawDevice::RawDevice() : _p(std::make_unique<PrivateImpl>())
+RawDevice::RawDevice() 
+    : _p(std::make_unique<PrivateImpl>())
 {
+
 }
 
 // Public constructors
 
-RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>())
-{
+RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>()) {
+    // Construct device from path
+
+    // Declare vars
+
+    kern_return_t kr;
+
+    // Convert path to IOKit
+
+    io_string_t ioPath;
+    macOSUtility::stringToIOString(path, ioPath);
+
+    // Get registryEntry from path
+
+    const io_registry_entry_t registryEntry = IORegistryEntryFromPath(kIOMasterPortDefault, ioPath);
+
+    // Get service from registryEntry
+
+    uint64_t entryID;
+    kr = IORegistryEntryGetRegistryEntryID(registryEntry, &entryID);
+    if (kr != KERN_SUCCESS) {
+        // TODO: Log something and return
+    }
+    CFDictionaryRef matchDict = IORegistryEntryIDMatching(entryID);
+    io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matchDict);
+    // ^ TODO: Check that the service is valid
+
+    // Create IOHIDDevice from service
+
+    IOHIDDeviceRef device = IOHIDDeviceCreate(kCFAllocatorDefault, service);
+
+    // Store IOHIDDevice in self
+
+    _p->iohidDevice = device;
+
+    // Fill up other member variables
+
+    _vendor_id = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDVendorIDKey));
+    _product_id = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductIDKey));
+    _name = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductKey));
+    _report_desc = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDReportDescriptorKey));
+
+    // TODO: Release stuff
 }
 
 RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>()),
@@ -89,20 +141,68 @@ RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this 
 
 RawDevice::~RawDevice()
 {
+    IOHIDDeviceClose(_p->iohidDevice); // Don't think this is necessary
 }
 
 // Interface
 
+// writeReport
+
 int RawDevice::writeReport(const std::vector<uint8_t> &report)
 {
+
+    IOReturn r = IOHIDDeviceSetReport(_p->iohidDevice, kIOHIDReportTypeOutput, report[0], report.data(), report.size())
+    // ^ I'm not sure about these parameters at all
+
+    if (r != kIOReturnSuccess) {
+        // TODO: Return some meaningful error code
+    }
+
     return 0;
 }
 
+// readReport
+
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout)
 {
+
+    // Convert from timeout arg to IOHID-compatible timeoutCF
+
+    CFTimeInterval timeoutCF;
+    if timeout < 0 {
+        timeoutCF = DBL_MAX; // A negative timeout means no time out. This should be close enough.
+    } else {
+        timeoutCF = timeout / 1000.0 // timeoutCF is in seconds, whereas timeout is in ms.
+    }
+
+    IOReturn r = IOHIDDeviceGetReportWithCallback(_p->iohidDevice, kIOHIDReportTypeInput, report[0], report.data(), report.size(), timeoutCF, readCallback, NULL);
+    // ^ Not sure about these parameters
+
+    iohiddevicereportcallba
+
+    if (r != kIOReturnSuccess) {
+        // TODO: Return some meaningful error code
+    }
+
     return 0;
 }
 
 void RawDevice::interruptRead()
 {
+}
+
+// readReport helper functions
+
+void RawDevice::readCallback(   void * _Nullable        context,
+                                IOReturn                result, 
+                                void * _Nullable        sender,
+                                IOHIDReportType         type, 
+                                uint32_t                reportID,
+                                uint8_t *               report, 
+                                CFIndex                 reportLength) {
+    
+    if (!_p->readHasTimedOut) {
+        _p->readResult->report = report;
+        _p->readResult->reportLength = reportLength;
+    }
 }

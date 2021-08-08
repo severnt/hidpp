@@ -64,7 +64,12 @@ if("${HID_BACKEND}" STREQUAL "windows")
 		hid/windows/error_category.cpp
 		hid/windows/DeviceData.cpp
 	)
+elseif("${HID_BACKEND}" STREQUAL "macos")
+	set(LIBHIDPP_SOURCES ${LIBHIDPP_SOURCES}
+		hid/macos/macOSUtility.cpp
+	)
 endif()
+
 
 include_directories(.)
 add_library(hidpp SHARED ${LIBHIDPP_SOURCES})
@@ -74,8 +79,9 @@ if("${HID_BACKEND}" STREQUAL "linux")
 elseif("${HID_BACKEND}" STREQUAL "windows")
 	target_link_libraries(hidpp setupapi hid cfgmgr32)
 elseif("${HID_BACKEND}" STREQUAL "macos")
-	find_library(MAC_LIBRARY Foundation)
-	target_link_libraries(hidpp ${MAC_LIBRARY}) # Src: https://stackoverflow.com/questions/2908640/how-to-add-a-framework-to-cmake
+	target_link_libraries(hidpp stdc++ "-framework IOKit" objc)
+	# 	^ Src: https://stackoverflow.com/a/25286420/10601702
+	#		The approach using find_library() didn't work
 endif()
 
 install(DIRECTORY "./" DESTINATION "include/hidpp"
