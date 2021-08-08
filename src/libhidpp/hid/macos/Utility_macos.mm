@@ -93,7 +93,7 @@ const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
     io_service_t service = IOHIDDeviceGetService(device);
     // Get cfPath
     CFStringRef cfPath = IORegistryEntryCopyPath(service, kIOServicePlane);
-    // Get cString path
+    // Get path
     const char *path = CFStringGetCStringPtr(cfPath, kCFStringEncodingUTF8);
 
     return path;

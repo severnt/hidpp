@@ -80,7 +80,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     uint64_t entryID;
     kr = IORegistryEntryGetRegistryEntryID(registryEntry, &entryID);
     if (kr != KERN_SUCCESS) {
-        // TODO: Log something and return
+        // TODO: Throw an error or something
     }
     CFDictionaryRef matchDict = IORegistryEntryIDMatching(entryID);
     io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matchDict);
@@ -93,19 +93,21 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _p->iohidDevice = device;
 
     // Open device
-    IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); //  Necessary to change the state of the device
-    // ^ TODO: Check for success
+    IOReturn ior = IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); // Necessary to change the state of the device
+    if (ior != kIOReturnSuccess) {
+        // TODO: Throw and error or something
+    }
 
     // Store IOHIDDevice in self
     _p->iohidDevice = device;
 
-    // Fill up public member variables
+    // Fill out public member variables
     _vendor_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDVendorIDKey));
     _product_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDProductIDKey));
     _name = Utility_macos::IOHIDDeviceGetStringProperty(device, CFSTR(kIOHIDProductKey));
     _report_desc = Utility_macos::IOHIDDeviceGetReportDescriptor(device);
 
-    // Fill up private member variables
+    // Fill out private member variables
     _p->maxInputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxInputReportSizeKey));
     _p->maxOutputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxOutputReportSizeKey));
 
@@ -178,19 +180,17 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Schedule device with runloop
     //  Necessary for async API (callback) to work
-
     _p->inputReportRunLoop = CFRunLoopGetCurrent();
     IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
     // Allocate buffers
-
     uint8_t reportBuffer[_p->maxInputReportSize];
     CFIndex reportLength = -1;
 
     // Get report
-    //  IOHIDDeviceGetReportWithCallback has a built in timeout, but Apple docs say it should only be used for feature reports. 
-    //      So we're using IOHIDDeviceRegisterInputReportCallback instead.
-
+    //  IOHIDDeviceGetReportWithCallback has a built-in timeout and allows you to specify IOHIDReportType, 
+    //      but Apple docs say it should only be used for feature reports. So we're using 
+    //      IOHIDDeviceRegisterInputReportCallback instead.
     IOHIDDeviceRegisterInputReportCallback(
         _p->iohidDevice, 
         reportBuffer, 
@@ -198,19 +198,19 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
 
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
-            //  ^ We can't capture `this`, because then the enclosing lambda wouldn't decay to a pure c function anymore
+            //  ^ We can't capture `this`, because then the enclosing lambda wouldn't decay to a pure c function
             thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
         }, 
         this // Pass `this` to context
     );
 
+    // Create lock for waiting
+    std::unique_lock<std::mutex> lock(_p->inputReportMutex); // I think this also locks the lock. Lock needs to be locked for inputReportBlocker to work.
+
     // Wait until on of these happens
     //  - Device sends input report
     //  - Timeout happens
     //  - interruptRead() is called
-
-    // Create lock
-    std::unique_lock<std::mutex> lock(_p->inputReportMutex); // I think this also locks the lock. Lock needs to be locked for inputReportBlocker to work.
 
     if (timeout < 0) { // Negative `timeout` means no timeout
         _p->inputReportBlocker.wait(lock);
