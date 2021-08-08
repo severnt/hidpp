@@ -39,7 +39,7 @@ extern "C" { // This needs to be declared after `using namespace HID` for some r
 }
 
 // PrivateImpl
-//  Why do we use the PrivateImpl struct instead of private member variables?
+//  Why do we use the PrivateImpl struct instead of private member variables or namespace-less variable?
 
 struct RawDevice::PrivateImpl
 {
@@ -47,6 +47,10 @@ struct RawDevice::PrivateImpl
 
     CFIndex maxInputReportSize;
     CFIndex maxOutputReportSize;
+    CFRunLoopRef inputReportRunLoop;
+
+    std::mutex inputReportMutex;
+    std::condition_variable inputReportBlocker;
 };
 
 // Private constructor
@@ -109,15 +113,7 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
                                                _name(other._name),
                                                _report_desc(other._report_desc)
 {
-    // _p->fd = ::dup (other._p->fd);
-    // if (-1 == _p->fd) {
-    // 	throw std::system_error (errno, std::system_category (), "dup");
-    // }
-    // if (-1 == ::pipe (_p->pipe)) {
-    // 	int err = errno;
-    // 	::close (_p->fd);
-    // 	throw std::system_error (err, std::system_category (), "pipe");
-    // }
+    // I don't know what this is supposed to to
 }
 
 RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this constructor and the one above?
@@ -127,17 +123,7 @@ RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this 
                                           _name(std::move(other._name)),
                                           _report_desc(std::move(other._report_desc))
 {
-    // _p->fd = other._p->fd;
-    // _p->pipe[0] = other._p->pipe[0];
-    // _p->pipe[1] = other._p->pipe[1];
-    // other._p->fd = other._p->pipe[0] = other._p->pipe[1] = -1;
-}
-
-// Destructor
-
-RawDevice::~RawDevice()
-{
-    IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone);
+    // I don't know what this is supposed to to
 }
 
 // Interface
@@ -178,46 +164,73 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout)
 {
 
-    // Convert timeout
-    CFTimeInterval timeoutCF;
-    if (timeout < 0) {
-        timeoutCF = DBL_MAX; // A negative timeout means no time out. This should be close enough.
+    // Schedule device with runloop
+    //  Necessary for async APIs to work
+
+    _p->inputReportRunLoop = CFRunLoopGetCurrent();
+    IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
+
+    // Allocate buffers
+
+    uint8_t reportBuffer[_p->maxInputReportSize];
+    CFIndex reportLength = -1;
+
+    // Get report
+    //  IOHIDDeviceGetReportWithCallback has a built in timeout, but Apple docs say it should only be used for feature reports. 
+    //      So we're using IOHIDDeviceRegisterInputReportCallback instead.
+
+    IOHIDDeviceRegisterInputReportCallback(
+        _p->iohidDevice, 
+        reportBuffer, 
+        reportLength, 
+        [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
+
+            RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
+            //  ^ We can't capture `this`, because then this lambda wouldn't decay to a pure c function anymore
+            thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
+        }, 
+        this // Pass `this` to context
+    );
+
+    // Wait until on of these happens
+    //  - Device sends input report
+    //  - Timeout happens
+    //  - interruptRead() is called
+
+    // Create lock
+    std::unique_lock<std::mutex> lock(_p->inputReportMutex); // I think this also locks the lock. Lock needs to be locked for inputReportBlocker to work.
+
+    if (timeout < 0) { // Negative `timeout` means no timeout
+        _p->inputReportBlocker.wait(lock);
     } else {
-        timeoutCF = timeout / 1000.0; // timeoutCF is in s, timeout is in ms.
+        std::chrono::milliseconds duration(timeout);
+        _p->inputReportBlocker.wait_for(lock, duration);
     }
 
-    // Schedule device with runloop
-    //  Necessary for asynch APIs to work
-    // IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, RunLoopGet)
+    // Stop listening for reports
+    IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
-    // // Init report values
+    // Check success
+    if (reportLength == -1) { // The read has timed out or was interrupted
 
-    // bool readHasTimedOut = false;
+        // TODO: Return some meaningful error code or something
+    }
 
-    // // Allocate buffers
+    // Write result to the `report` argument
+    report = std::vector<uint8_t>(reportBuffer, reportBuffer + reportLength);
 
-    // uint8_t reportBuffer[1024];
-    // CFIndex reportLengthBuffer;
-
-    // // Query report
-
-    // IOReturn r = IOHIDDeviceGetReportWithCallback(_p->iohidDevice, kIOHIDReportTypeInput, report[0], &reportBuffer, &reportLengthBuffer, timeoutCF, NULL, NULL);
-    // // ^ Not sure about these parameters
-    // // This function is blocking.
-    // // Apple docs say this functions should only be used for feature reports.
-
-    // // TODO: Check if timed out
-
-    // if (r != kIOReturnSuccess) {
-    //     // TODO: Return some meaningful error code
-    // }
-
-    // // Return
-
-    // report = std::vector<uint8_t>(&reportBuffer[0], &reportBuffer[0] + reportLengthBuffer);
-    // return reportLengthBuffer;
+    // Return
+    return reportLength;
 }
 
-void RawDevice::interruptRead()
+void RawDevice::interruptRead() {
+    _p->inputReportBlocker.notify_all(); // Stop waiting for report
+}
+
+// Destructor
+
+RawDevice::~RawDevice()
 {
+    IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes); // Not sure if necessary
+    IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone); // Not sure if necessary
 }
