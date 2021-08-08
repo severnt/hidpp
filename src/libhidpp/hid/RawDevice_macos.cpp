@@ -94,6 +94,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
 
     // Open device
     IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); //  Necessary to change the state of the device
+    // ^ TODO: Check for success
 
     // Store IOHIDDevice in self
     _p->iohidDevice = device;
@@ -127,6 +128,15 @@ RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this 
                                           _report_desc(std::move(other._report_desc))
 {
     // I don't know what this is supposed to to
+}
+
+// Destructor
+
+RawDevice::~RawDevice()
+{
+    IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes); // Not sure if necessary
+    IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone); // Not sure if necessary
+    CFRelease(_p->iohidDevice); // Not sure if necessary
 }
 
 // Interface
@@ -188,7 +198,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
 
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
-            //  ^ We can't capture `this`, because then this lambda wouldn't decay to a pure c function anymore
+            //  ^ We can't capture `this`, because then the enclosing lambda wouldn't decay to a pure c function anymore
             thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
         }, 
         this // Pass `this` to context
@@ -230,13 +240,4 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
 void RawDevice::interruptRead() {
     _p->inputReportBlocker.notify_all(); // Stop waiting for report
-}
-
-// Destructor
-
-RawDevice::~RawDevice()
-{
-    IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes); // Not sure if necessary
-    IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone); // Not sure if necessary
-    CFRelease(_p->iohidDevice); // Not sure if necessary
 }
