@@ -92,7 +92,7 @@ DeviceMonitor::~DeviceMonitor () {
 
 void DeviceMonitor::enumerate () {
 
-	// Get c array of devices attached to the manager
+	// Get C array of devices attached to the manager
 
 	CFSetRef devices = IOHIDManagerCopyDevices(_p->manager);
 
