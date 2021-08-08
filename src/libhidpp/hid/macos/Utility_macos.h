@@ -39,5 +39,5 @@ public:
     static std::string IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, CFStringRef key);
     static HID::ReportDescriptor IOHIDDeviceGetReportDescriptor(IOHIDDeviceRef device);
 
-    const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device)
+    static const char * IOHIDDeviceGetPath(IOHIDDeviceRef device);
 };

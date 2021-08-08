@@ -33,10 +33,6 @@ void Utility_macos::stringToIOString(std::string string, io_string_t &ioString) 
 
 // Convert Cocoa -> Cpp
 
-const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
-    return CFStringToString((CFStringRef)IOHIDDeviceGetProperty(device, CFSTR(kIOPathKey))).c_str();
-}
-
 long Utility_macos::CFNumberToInt(CFNumberRef cfNumber) {
 
     long result;
@@ -86,6 +82,21 @@ HID::ReportDescriptor Utility_macos::IOHIDDeviceGetReportDescriptor(IOHIDDeviceR
     return CFDataToByteVector((CFDataRef)value); // typedef std::vector<uint8_t> ReportDescriptor
 }
 
+// Other IOHIDDevice helpers
 
+const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
+    
+    // return CFStringToString((CFStringRef)IOHIDDeviceGetProperty(device, CFSTR(kIOPathKey))).c_str(); 
+    //  ^ Not sure if this would work
+
+    // Get service
+    io_service_t service = IOHIDDeviceGetService(device);
+    // Get cfPath
+    CFStringRef cfPath = IORegistryEntryCopyPath(service, kIOServicePlane);
+    // Get cString path
+    const char *path = CFStringGetCStringPtr(cfPath, kCFStringEncodingUTF8);
+
+    return path;
+}
 
 

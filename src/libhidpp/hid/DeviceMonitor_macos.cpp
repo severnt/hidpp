@@ -55,24 +55,26 @@ DeviceMonitor::DeviceMonitor ():
 	IOHIDManagerRegisterDeviceMatchingCallback(
 		_p->manager, 
 		[] (void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
-			
+			// Get this
+			DeviceMonitor *thisss = static_cast<DeviceMonitor *>(context);
 			// Get path
 			const char *path = Utility_macos::IOHIDDeviceGetPath(device);
 			// Add device
-			addDevice(path);
+			thisss->addDevice(path);
 		}, 
-		NULL
+		this
 	);
 
 	// Setup device removal callback
 	IOHIDManagerRegisterDeviceRemovalCallback(
 		_p->manager, 
 		[] (void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
-			
+			// Get this
+			DeviceMonitor *thisss = static_cast<DeviceMonitor *>(context);
 			// Get path
 			const char *path = Utility_macos::IOHIDDeviceGetPath(device);
 			// Add device
-			removeDevice(path);
+			thisss->removeDevice(path);
 		}, 
 		NULL
 	);
@@ -82,7 +84,7 @@ DeviceMonitor::DeviceMonitor ():
 
 DeviceMonitor::~DeviceMonitor () {
 
-	IOHIDManagerUnscheduleFromRunLoop(_p->manager); // Not sure if necessary
+	IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); // Not sure if necessary
 	CFRelease(_p->manager); // Not sure if necessary
 }
 

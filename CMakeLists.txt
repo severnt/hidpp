@@ -27,10 +27,14 @@ if("${HID_BACKEND}" STREQUAL "linux")
 elseif("${HID_BACKEND}" STREQUAL "windows")
 	add_definitions(-DUNICODE -D_UNICODE)
 	add_definitions(-D_WIN32_WINNT=0x0600) # Use vista or later
-elseif("${HID_BACKEND}" STREQUAL "macos") # Suppress warning I don't understand
-	set(CMAKE_MACOSX_RPATH ON)
-	include_directories(/usr/local/include) # Necessary to prevent `fatal error: 'tinyxml2.h' file not found`
-	link_directories(${TINYXML2_LIBRARY_DIRS})
+elseif("${HID_BACKEND}" STREQUAL "macos")
+	set(CMAKE_MACOSX_RPATH ON) # Suppress warning I don't understand
+	include_directories(/usr/local/include) 
+	# 	^ Prevent `fatal error: 'tinyxml2.h' file not found`
+	# 		Src: https://gitlab.kitware.com/cmake/cmake/-/issues/19120
+	link_directories(${TINYXML2_LIBRARY_DIRS}) 
+	# 	^ Prevent `ld: library not found for -ltinyxml2`
+	#		Src: https://stackoverflow.com/q/60362476/10601702
 else()
 	message(FATAL_ERROR "HID_BACKEND is invalid.")
 endif()
