@@ -89,6 +89,9 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // Create IOHIDDevice from service
     IOHIDDeviceRef device = IOHIDDeviceCreate(kCFAllocatorDefault, service);
 
+    // Store device
+    _p->iohidDevice = device;
+
     // Open device
     IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); //  Necessary to change the state of the device
 
@@ -216,7 +219,10 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     }
 
     // Write result to the `report` argument
-    report = std::vector<uint8_t>(reportBuffer, reportBuffer + reportLength);
+    if (reportLength >= 0) {
+        report.resize(reportLength);
+        report.assign(reportBuffer, reportBuffer + reportLength);
+    }
 
     // Return
     return reportLength;
