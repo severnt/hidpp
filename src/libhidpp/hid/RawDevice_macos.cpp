@@ -52,7 +52,7 @@ struct RawDevice::PrivateImpl
     CFRunLoopRef inputReportRunLoop;
 
     std::mutex inputReportMutex;
-    std::condition_variable inputReportBlocker;
+    // std::condition_variable inputReportBlocker;
     bool waitingForInputReport; 
     //  ^ Using primitive method for blocking thread instead of inputReportBlocker for debugging. Remove this once inputReportBlocker works.
 
@@ -186,7 +186,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Inflate timeout for debugging
     timeout *= 10;
 
-    // Convert timeout to seconds (instead of milliseconds)
+    // Convert timeout to seconds instead of milliseconds
     double timeoutSeconds = timeout / 1000.0;
 
     // Get runLoop
@@ -196,8 +196,10 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     if (this->_p->inputReportRunLoop != NULL) {
 
         // There's already a running runLoop for this device.
-        //  This means that another attempt to readReport's is already in progress.
-        //  Not sure what to do in this case.
+        //  This probably means that another attempt to readReport's is already in progress
+        //  Not sure what to do in this case
+
+        Log::warning("Requested input report with a runLoop already running");
 
         runLoopIsSetUp = true;
 
@@ -234,7 +236,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         });
     }
 
-    // Wait for inputReportRunLoop setup
+    // Wait for runLoop setup
 
     // Loop-based waiting
     while (!runLoopIsSetUp) { } 
@@ -266,7 +268,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
             //  ^ We can't capture `this`, because then the enclosing lambda wouldn't decay to a pure c function
-            thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
+            // thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
             thisss->_p->waitingForInputReport = false;
         }, 
         this // Pass `this` to context
@@ -275,8 +277,10 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Wake up runLoop. Not sure if necessary.
     CFRunLoopWakeUp(_p->inputReportRunLoop);
 
+    // Wait for input report
+
     // Loop-based waiting
-    //  Using a more primitive method of waiting for input to help debugging. Move to lock-based waiting once everything else works.
+    //  Using a simpler method of waiting for input to help debugging. Move to lock-based waiting once everything else works.
 
     double startOfWait = Utility_macos::timestamp();
     
@@ -330,6 +334,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 }
 
 void RawDevice::interruptRead() {
-    _p->inputReportBlocker.notify_all(); // Stop waiting for report
+    // _p->inputReportBlocker.notify_all(); // Stop waiting for report
     _p->waitingForInputReport = false;
 }

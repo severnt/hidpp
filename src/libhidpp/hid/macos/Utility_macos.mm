@@ -108,7 +108,7 @@ void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoop
     //  ^ Passing NULL for the callback unregisters the previous callback.
     //      Not sure if redundant when already calling IOHIDDeviceUnscheduleFromRunLoop.
 
-    // Remove from runLoop
+    // Remove device from runLoop
     IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, kCFRunLoopCommonModes);
 
     // If there is nothing else scheduled on the runLoop it should exit automatically after this.
