@@ -86,8 +86,15 @@ DeviceMonitor::DeviceMonitor ():
 
 DeviceMonitor::~DeviceMonitor () {
 
-	IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); // Not sure if necessary
-	CFRelease(_p->manager); // Not sure if necessary
+	// Unregister device added / removed callbacks. 
+	//	Not sure if necessary
+	IOHIDManagerRegisterDeviceMatchingCallback(_p->manager, NULL, NULL);
+	IOHIDManagerRegisterDeviceRemovalCallback(_p->manager, NULL, NULL);
+	// Stop
+	stop();
+	// Release
+	// 	Not sure if necessary
+	CFRelease(_p->manager);
 }
 
 // Interface
@@ -138,6 +145,8 @@ void DeviceMonitor::run () {
 		// Set runLoop to NULL after it exits
 		this->_p->managerRunLoop = NULL;
 	});
+
+	runLoopThread.detach(); // Otherwise the runLoopThread would be destroyed once this scope is exited
 }
 
 void DeviceMonitor::stop () {

@@ -183,9 +183,14 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
+    // Prevent multiple threads from executing this function at the same time
+    //  This is super inefficient when there are multiple threads trying to enter, but it's an easy way to avoid race conditions
+    //  Making it so multiple threads can enter at the same time safely should be possible but would require a lot of extra work I think
+    static std::mutex m;
+    const std::lock_guard<std::mutex> lock(m);
+
     // Inflate timeout for debugging
     timeout *= 10;
-
     // Convert timeout to seconds instead of milliseconds
     double timeoutSeconds = timeout / 1000.0;
 
@@ -255,7 +260,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Init lastInputReportLength
     //  We override this in the reportCallback. If it hasn't been overriden once we exit this function, we know that the read has failed.
-    //  Should only be used by this function.
+    //  Should only be used by this function. It's only a global variable so that the inputReportCallback can access it.
     _p->lastInputReportLength = -1;
 
     // Init primitive method for waiting for input report
@@ -272,9 +277,11 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
 
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
-            //  ^ We can't capture `this`, because then the enclosing lambda wouldn't decay to a pure c function
+            //  ^ We can't capture `this` or anything else, because then the enclosing lambda wouldn't decay to a pure c function
+            
             // thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
             thisss->_p->waitingForInputReport = false;
+
             thisss->_p->lastInputReportLength = reportLength;
         }, 
         this // Pass `this` to context
@@ -323,6 +330,10 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Stop listening for reports
     Utility_macos::stopListeningToInputReports(_p->iohidDevice, _p->inputReportRunLoop);
 
+    // Wait for runLoopThread to stop
+    //  This might have a negative performance impact, but is an easy way to avoid race conditions.
+    runLoopThread.join();
+
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
         return 0;
@@ -332,7 +343,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     } else { // Reading was successful
 
         // Write result to the `report` argument
-        int assignLength = report.size() < _p->lastInputReportLength ? report.size() : _p->lastInputReportLength;
+        int assignLength = std::min<size_t>(report.size(), _p->lastInputReportLength);
         report.assign(reportBuffer, reportBuffer + assignLength);
         // Return
         return reportBufferSize;
