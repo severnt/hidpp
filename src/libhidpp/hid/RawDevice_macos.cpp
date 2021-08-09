@@ -128,9 +128,7 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
     // I don't know what this is supposed to to
 }
 
-RawDevice::RawDevice(RawDevice &&other) : // What's the difference between this constructor and the one above?
-
-                                          _p(std::make_unique<PrivateImpl>()),
+RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
                                           _vendor_id(other._vendor_id), _product_id(other._product_id),
                                           _name(std::move(other._name)),
                                           _report_desc(std::move(other._report_desc))
@@ -162,7 +160,7 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
     // Gather args for report sending
     IOHIDDeviceRef device = _p->iohidDevice;
-    IOHIDReportType reportType = kIOHIDReportTypeOutput; // Not sure if correct
+    IOHIDReportType reportType = kIOHIDReportTypeOutput;
     CFIndex reportID = report[0];
     const uint8_t *rawReport = report.data();
     CFIndex reportLength = report.size();
