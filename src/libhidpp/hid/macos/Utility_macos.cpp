@@ -56,7 +56,7 @@ std::string Utility_macos::CFStringToString(CFStringRef cfString) {
     return result;
 }
 
-HID::ReportDescriptor Utility_macos::CFDataToByteVector(CFDataRef cfData) {
+std::vector<uint8_t> Utility_macos::CFDataToByteVector(CFDataRef cfData) {
 
     const uint8_t *bytes = CFDataGetBytePtr(cfData);
     CFIndex length = CFDataGetLength(cfData);
@@ -78,8 +78,9 @@ std::string Utility_macos::IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, C
 }
 
 HID::ReportDescriptor Utility_macos::IOHIDDeviceGetReportDescriptor(IOHIDDeviceRef device) {
-    CFTypeRef value = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDReportDescriptorKey));
-    return CFDataToByteVector((CFDataRef)value); // typedef std::vector<uint8_t> ReportDescriptor
+    CFTypeRef cfValue = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDReportDescriptorKey));
+    std::vector<uint8_t> byteVector = CFDataToByteVector((CFDataRef)cfValue);
+    return HID::ReportDescriptor::fromRawData(byteVector.data(), byteVector.size());
 }
 
 // Other IOHIDDevice helpers

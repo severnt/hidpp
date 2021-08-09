@@ -33,7 +33,7 @@ public:
 
     static long CFNumberToInt(CFNumberRef cfNumber);
     static std::string CFStringToString(CFStringRef cfString);
-    static HID::ReportDescriptor CFDataToByteVector(CFDataRef cfData);
+    static std::vector<uint8_t> CFDataToByteVector(CFDataRef cfData);
 
     static long IOHIDDeviceGetIntProperty(IOHIDDeviceRef device, CFStringRef key);
     static std::string IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, CFStringRef key);

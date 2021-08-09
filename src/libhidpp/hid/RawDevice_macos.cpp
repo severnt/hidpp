@@ -199,7 +199,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         //  This probably means that another attempt to readReport's is already in progress
         //  Not sure what to do in this case
 
-        Log::warning("Requested input report with a runLoop already running");
+        Log::warning () << "Requested input report with a runLoop already running" << std::endl;
 
         runLoopIsSetUp = true;
 

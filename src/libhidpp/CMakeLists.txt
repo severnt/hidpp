@@ -68,7 +68,7 @@ if("${HID_BACKEND}" STREQUAL "windows")
 	)
 elseif("${HID_BACKEND}" STREQUAL "macos")
 	set(LIBHIDPP_SOURCES ${LIBHIDPP_SOURCES}
-		hid/macos/Utility_macos.mm
+		hid/macos/Utility_macos.cpp
 	)
 endif()
 
