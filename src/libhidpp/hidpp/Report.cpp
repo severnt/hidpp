@@ -25,83 +25,6 @@
 
 using namespace HIDPP;
 
-static const std::array<uint8_t, 27> ShortReportDesc = {
-	0x06, 0x00, 0xFF,	// Usage Page (FF00 - Vendor)
-	0x09, 0x01,		// Usage (0001 - Vendor)
-	0xA1, 0x01,		// Collection (Application)
-	0x85, 0x10,		//   Report ID (16)
-	0x75, 0x08,		//   Report Size (8)
-	0x95, 0x06,		//   Report Count (6)
-	0x15, 0x00,		//   Logical Minimum (0)
-	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
-	0x09, 0x01,		//   Usage (0001 - Vendor)
-	0x81, 0x00,		//   Input (Data, Array, Absolute)
-	0x09, 0x01,		//   Usage (0001 - Vendor)
-	0x91, 0x00,		//   Output (Data, Array, Absolute)
-	0xC0			// End Collection
-};
-
-static const std::array<uint8_t, 27> LongReportDesc = {
-	0x06, 0x00, 0xFF,	// Usage Page (FF00 - Vendor)
-	0x09, 0x02,		// Usage (0002 - Vendor)
-	0xA1, 0x01,		// Collection (Application)
-	0x85, 0x11,		//   Report ID (17)
-	0x75, 0x08,		//   Report Size (8)
-	0x95, 0x13,		//   Report Count (19)
-	0x15, 0x00,		//   Logical Minimum (0)
-	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
-	0x09, 0x02,		//   Usage (0002 - Vendor)
-	0x81, 0x00,		//   Input (Data, Array, Absolute)
-	0x09, 0x02,		//   Usage (0002 - Vendor)
-	0x91, 0x00,		//   Output (Data, Array, Absolute)
-	0xC0			// End Collection
-};
-
-/* Alternative versions from the G602 */
-static const std::array<uint8_t, 27> ShortReportDesc2 = {
-	0x06, 0x00, 0xFF,	// Usage Page (FF00 - Vendor)
-	0x09, 0x01,		// Usage (0001 - Vendor)
-	0xA1, 0x01,		// Collection (Application)
-	0x85, 0x10,		//   Report ID (16)
-	0x95, 0x06,		//   Report Count (6)
-	0x75, 0x08,		//   Report Size (8)
-	0x15, 0x00,		//   Logical Minimum (0)
-	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
-	0x09, 0x01,		//   Usage (0001 - Vendor)
-	0x81, 0x00,		//   Input (Data, Array, Absolute)
-	0x09, 0x01,		//   Usage (0001 - Vendor)
-	0x91, 0x00,		//   Output (Data, Array, Absolute)
-	0xC0			// End Collection
-};
-
-static const std::array<uint8_t, 27> LongReportDesc2 = {
-	0x06, 0x00, 0xFF,	// Usage Page (FF00 - Vendor)
-	0x09, 0x02,		// Usage (0002 - Vendor)
-	0xA1, 0x01,		// Collection (Application)
-	0x85, 0x11,		//   Report ID (17)
-	0x95, 0x13,		//   Report Count (19)
-	0x75, 0x08,		//   Report Size (8)
-	0x15, 0x00,		//   Logical Minimum (0)
-	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
-	0x09, 0x02,		//   Usage (0002 - Vendor)
-	0x81, 0x00,		//   Input (Data, Array, Absolute)
-	0x09, 0x02,		//   Usage (0002 - Vendor)
-	0x91, 0x00,		//   Output (Data, Array, Absolute)
-	0xC0			// End Collection
-};
-
-template<typename Container1, typename Container2>
-static inline bool contains (const Container1 &cont, const Container2 &seq)
-{
-	return cont.end () != std::search (cont.begin (), cont.end (), seq.begin (), seq.end ());
-}
-
-bool HIDPP::checkReportDescriptor (const std::vector<uint8_t> &rdesc)
-{
-	return (contains (rdesc, ShortReportDesc) || contains (rdesc, ShortReportDesc2)) &&
-		(contains (rdesc, LongReportDesc) || contains (rdesc, LongReportDesc2));
-}
-
 Report::InvalidReportID::InvalidReportID ()
 {
 }
@@ -129,38 +52,24 @@ static constexpr unsigned int Address = 3;
 static constexpr unsigned int Parameters = 4;
 }
 
-Report::Report (uint8_t type, const uint8_t *data, std::size_t length)
+Report::Report (uint8_t report_id, const uint8_t *data, std::size_t length)
 {
-	switch (static_cast<Type> (type)) {
-	case Short:
-		_data.resize (HeaderLength+ShortParamLength);
-		break;
-	case Long:
-		_data.resize (HeaderLength+LongParamLength);
-		break;
-	default:
-		throw InvalidReportID ();
-	}
-	if (length != _data.size ()-1)
-		throw InvalidReportLength ();
 
-	_data[Offset::Type] = type;
+	auto expected_len = reportLength (static_cast<Type> (report_id));
+	if (expected_len == 0)
+		throw InvalidReportID ();
+	_data.resize (expected_len);
+	if (length != expected_len-1)
+		throw InvalidReportLength ();
+	_data[Offset::Type] = report_id;
 	std::copy_n (data, length, &_data[1]);
 }
 
 Report::Report (std::vector<uint8_t> &&data)
 {
-	std::size_t expected_len;
-	switch (static_cast<Type> (data[0])) {
-	case Short:
-		expected_len = HeaderLength+ShortParamLength;
-		break;
-	case Long:
-		expected_len = HeaderLength+LongParamLength;
-		break;
-	default:
+	auto expected_len = reportLength (static_cast<Type> (data[0]));
+	if (expected_len == 0)
 		throw InvalidReportID ();
-	}
 	if (data.size () != expected_len)
 		throw InvalidReportLength ();
 	_data = std::move (data);
@@ -171,14 +80,7 @@ Report::Report (Type type,
 		uint8_t sub_id,
 		uint8_t address)
 {
-	switch (type) {
-	case Short:
-		_data.resize (HeaderLength+ShortParamLength, 0);
-		break;
-	case Long:
-		_data.resize (HeaderLength+LongParamLength, 0);
-		break;
-	}
+	_data.resize (reportLength (type), 0);
 	_data[Offset::Type] = type;
 	_data[Offset::DeviceIndex] = device_index;
 	_data[Offset::SubID] = sub_id;
@@ -191,18 +93,16 @@ Report::Report (HIDPP::DeviceIndex device_index,
 		std::vector<uint8_t>::const_iterator param_begin,
 		std::vector<uint8_t>::const_iterator param_end)
 {
-	switch (std::distance (param_begin, param_end)) {
-	case ShortParamLength:
-		_data.resize (HeaderLength+ShortParamLength);
-		_data[Offset::Type] = Short;
-		break;
-	case LongParamLength:
-		_data.resize (HeaderLength+LongParamLength);
-		_data[Offset::Type] = Long;
-		break;
-	default:
-		throw InvalidReportLength ();
+	std::size_t param_len = std::distance (param_begin, param_end);
+	for (auto type: { Short, Long, VeryLong }) {
+		if (param_len == parameterLength (type)) {
+			_data.resize (reportLength (type));
+			_data[Offset::Type] = type;
+			break;
+		}
 	}
+	if (_data.empty ())
+		throw InvalidReportLength ();
 	_data[Offset::DeviceIndex] = device_index;
 	_data[Offset::SubID] = sub_id;
 	_data[Offset::Address] = address;
@@ -215,14 +115,7 @@ Report::Report (Type type,
 		unsigned int function,
 		unsigned int sw_id)
 {
-	switch (type) {
-	case Short:
-		_data.resize (HeaderLength+ShortParamLength, 0);
-		break;
-	case Long:
-		_data.resize (HeaderLength+LongParamLength, 0);
-		break;
-	}
+	_data.resize (reportLength (type), 0);
 	_data[Offset::Type] = type;
 	_data[Offset::DeviceIndex] = device_index;
 	_data[Offset::SubID] = feature_index;
@@ -236,18 +129,16 @@ Report::Report (DeviceIndex device_index,
 		std::vector<uint8_t>::const_iterator param_begin,
 		std::vector<uint8_t>::const_iterator param_end)
 {
-	switch (std::distance (param_begin, param_end)) {
-	case ShortParamLength:
-		_data.resize (HeaderLength+ShortParamLength);
-		_data[Offset::Type] = Short;
-		break;
-	case LongParamLength:
-		_data.resize (HeaderLength+LongParamLength);
-		_data[Offset::Type] = Long;
-		break;
-	default:
-		throw InvalidReportLength ();
+	std::size_t param_len = std::distance (param_begin, param_end);
+	for (auto type: { Short, Long, VeryLong }) {
+		if (param_len == parameterLength (type)) {
+			_data.resize (reportLength (type));
+			_data[Offset::Type] = type;
+			break;
+		}
 	}
+	if (_data.empty ())
+		throw InvalidReportLength ();
 	_data[Offset::DeviceIndex] = device_index;
 	_data[Offset::SubID] = feature_index;
 	_data[Offset::Address] = (function & 0x0f) << 4 | (sw_id & 0x0f);
@@ -317,18 +208,6 @@ void Report::setSoftwareID (unsigned int sw_id)
 std::size_t Report::parameterLength () const
 {
 	return parameterLength (static_cast<Type> (_data[Offset::Type]));
-}
-
-std::size_t Report::parameterLength (Type type)
-{
-	switch (type) {
-	case Short:
-		return ShortParamLength;
-	case Long:
-		return LongParamLength;
-	default:
-		throw std::logic_error ("Invalid type");
-	}
 }
 
 std::vector<uint8_t>::iterator Report::parameterBegin ()
