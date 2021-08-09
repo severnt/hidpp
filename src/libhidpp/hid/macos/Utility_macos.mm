@@ -19,7 +19,7 @@
 
 
 #include "Utility_macos.h"
-#include <string.h>
+#include <chrono>
 
 extern "C" {
     #include <stdbool.h>
@@ -110,6 +110,18 @@ void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoop
 
     // Remove from runLoop
     IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, kCFRunLoopCommonModes);
+
+    // If there is nothing else scheduled on the runLoop it should exit automatically after this.
+    //  And if there's nothing else scheduled on the thread which the runLoop is running on, it should exit, as well.
 }
 
+// Other
 
+double Utility_macos::timestamp() {
+    // Src: https://stackoverflow.com/a/45465312/10601702
+    // Returns seconds since January 1st 1970
+
+    auto now = std::chrono::system_clock::now();
+    auto timeSinceEpoch = std::chrono::duration<double>(now.time_since_epoch()); // Epoch is usually January 1st 1970
+    return timeSinceEpoch.count();
+}
