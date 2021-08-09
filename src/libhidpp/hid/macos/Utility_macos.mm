@@ -99,4 +99,17 @@ const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
     return path;
 }
 
+void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef runLoop) {
+
+    // Unregister input report callback
+    uint8_t reportBuffer[0]; // Passing this instead of NULL to silence warnings
+    CFIndex reportLength = 0;
+    IOHIDDeviceRegisterInputReportCallback(device, reportBuffer, reportLength, NULL, NULL); 
+    //  ^ Passing NULL for the callback unregisters the previous callback.
+    //      Not sure if redundant when already calling IOHIDDeviceUnscheduleFromRunLoop.
+
+    // Remove from runLoop
+    IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, kCFRunLoopCommonModes);
+}
+
 

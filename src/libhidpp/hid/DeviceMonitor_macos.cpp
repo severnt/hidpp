@@ -73,7 +73,7 @@ DeviceMonitor::DeviceMonitor ():
 			DeviceMonitor *thisss = static_cast<DeviceMonitor *>(context);
 			// Get path
 			const char *path = Utility_macos::IOHIDDeviceGetPath(device);
-			// Add device
+			// Remove device
 			thisss->removeDevice(path);
 		}, 
 		NULL
@@ -129,5 +129,5 @@ void DeviceMonitor::stop () {
 	// Stop monitor
 	IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
 	// 	^ Matching and removal callbacks defined in constructor deactivate
-	//		Storing managerRunLoop in _p because I think it might be good if the runloop used for scheduling and unscheduling is the same. Not sure though.
+	//		Storing managerRunLoop in _p because I think it might be good if the runloop used for scheduling and unscheduling is the same. Not sure if it makes a difference.
 }
