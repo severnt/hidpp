@@ -141,7 +141,7 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
 // Destructor
 
 RawDevice::~RawDevice(){
-    Utility_macos::stopListeningToInputReports(_p->iohidDevice, _p->inputReportRunLoop);
+    // Utility_macos::stopListeningToInputReports(_p->iohidDevice, _p->inputReportRunLoop); // Not necessary anymore - remove
     IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone); // Not sure if necessary
     CFRelease(_p->iohidDevice); // Not sure if necessary
 }
@@ -202,7 +202,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
         // There's already a running runLoop for this device.
         //  This probably means that another attempt to readReport's is already in progress
-        //  Not sure what to do in this case
 
         Log::warning () << "Requested input report with a runLoop already running" << std::endl;
 
@@ -332,7 +331,8 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Wait for runLoopThread to stop
     //  This might have a negative performance impact, but is an easy way to avoid race conditions.
-    runLoopThread.join();
+    //  E.g. One race condition this avoids is if this RawDevice is destroyed while the thread is still running.
+    _p->runLoopThread.join();
 
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
