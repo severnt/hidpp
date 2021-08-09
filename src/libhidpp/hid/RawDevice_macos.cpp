@@ -49,6 +49,8 @@ struct RawDevice::PrivateImpl
 
     CFIndex maxInputReportSize;
     CFIndex maxOutputReportSize;
+    CFIndex lastInputReportLength;
+
     CFRunLoopRef inputReportRunLoop;
 
     std::mutex inputReportMutex;
@@ -210,11 +212,8 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
         _p->runLoopThread = std::thread([this, &runLoopIsSetUp]() {
 
-            // Get runLoop for current thread
-            CFRunLoopRef runLoop = CFRunLoopGetCurrent();
-
-            // Store runLoop
-            this->_p->inputReportRunLoop = runLoop;
+            // Get runLoop
+            this->_p->inputReportRunLoop = CFRunLoopGetCurrent();;
 
             // Add IOHIDDevice to runLoop.
             //  Async callbacks for this IOHIDDevice will be delivered to this runLoop
@@ -232,6 +231,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
             //  By setting to NULL after the runLoop exits, we can see whether or not there's a running runLoop for this device from other places.
             this->_p->inputReportRunLoop = NULL;
         });
+
+        // TODO: You should always either detach or join a thread
+        // _p->runLoopThread.detach();
     }
 
     // Wait for runLoop setup
@@ -247,9 +249,14 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //  TODO
 
     // Setup reportBuffer
-    uint8_t reportBuffer[_p->maxInputReportSize];
-    memset(reportBuffer, 0, _p->maxInputReportSize); // Init with 0s
-    CFIndex reportBufferLength = -1;
+    CFIndex reportBufferSize = _p->maxInputReportSize;
+    uint8_t reportBuffer[reportBufferSize];
+    memset(reportBuffer, 0, reportBufferSize); // Init with 0s
+
+    // Init lastInputReportLength
+    //  We override this in the reportCallback. If it hasn't been overriden once we exit this function, we know that the read has failed.
+    //  Should only be used by this function.
+    _p->lastInputReportLength = -1;
 
     // Init primitive method for waiting for input report
     _p->waitingForInputReport = true;
@@ -261,13 +268,14 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     IOHIDDeviceRegisterInputReportCallback(
         _p->iohidDevice, 
         reportBuffer, 
-        reportBufferLength,
+        _p->maxInputReportSize,
         [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
 
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
             //  ^ We can't capture `this`, because then the enclosing lambda wouldn't decay to a pure c function
             // thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
             thisss->_p->waitingForInputReport = false;
+            thisss->_p->lastInputReportLength = reportLength;
         }, 
         this // Pass `this` to context
     );
@@ -315,7 +323,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Stop listening for reports
     Utility_macos::stopListeningToInputReports(_p->iohidDevice, _p->inputReportRunLoop);
 
-    if (reportBufferLength == -1) { // Reading has timed out or was interrupted
+    if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
         return 0;
 
@@ -324,10 +332,10 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     } else { // Reading was successful
 
         // Write result to the `report` argument
-        int assignLength = report.size() < reportBufferLength ? report.size() : reportBufferLength;
+        int assignLength = report.size() < _p->lastInputReportLength ? report.size() : _p->lastInputReportLength;
         report.assign(reportBuffer, reportBuffer + assignLength);
         // Return
-        return reportBufferLength;
+        return reportBufferSize;
     }
 }
 
