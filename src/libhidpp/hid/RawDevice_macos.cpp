@@ -57,8 +57,6 @@ struct RawDevice::PrivateImpl
     // std::condition_variable inputReportBlocker;
     bool waitingForInputReport; 
     //  ^ Using primitive method for blocking thread instead of inputReportBlocker for debugging. Remove this once inputReportBlocker works.
-
-    std::thread runLoopThread;
 };
 
 // Private constructor
@@ -214,7 +212,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         //  But that will also block the runLoop if the runLoop belongs to the current thread, which will prevent the inputReportCallback from firing.
         //  So we need the runLoop to belong to a different thread.
 
-        _p->runLoopThread = std::thread([this, &runLoopIsSetUp]() {
+        std::thread runLoopThread([this, &runLoopIsSetUp]() {
 
             // Get runLoop
             this->_p->inputReportRunLoop = CFRunLoopGetCurrent();;
@@ -235,9 +233,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
             //  By setting to NULL after the runLoop exits, we can see whether or not there's a running runLoop for this device from other places.
             this->_p->inputReportRunLoop = NULL;
         });
-
-        // TODO: You should always either detach or join a thread
-        // _p->runLoopThread.detach();
     }
 
     // Wait for runLoop setup
@@ -277,10 +272,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
             //  ^ We can't capture `this` or anything else, because then the enclosing lambda wouldn't decay to a pure c function
-            
+
             // thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
             thisss->_p->waitingForInputReport = false;
-
             thisss->_p->lastInputReportLength = reportLength;
         }, 
         this // Pass `this` to context
@@ -289,7 +283,10 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Wake up runLoop. Not sure if necessary.
     CFRunLoopWakeUp(_p->inputReportRunLoop);
 
-    // Wait for input report
+    // Wait for input report until on of these happens
+    //  - Device sends input report
+    //  - Timeout happens
+    //  - interruptRead() is called
 
     // Loop-based waiting
     //  Using a simpler method of waiting for input to help debugging. Move to lock-based waiting once everything else works.
@@ -314,11 +311,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // std::unique_lock<std::mutex> lock(_p->inputReportMutex); // I think this also locks the lock. Lock needs to be locked for inputReportBlocker to work.
     // lock.lock();
 
-    // Wait until on of these happens
-    //  - Device sends input report
-    //  - Timeout happens
-    //  - interruptRead() is called
-
     // if (timeout < 0) { // Negative `timeout` means no timeout
     //     _p->inputReportBlocker.wait(lock);
     // } else {
@@ -332,21 +324,18 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Wait for runLoopThread to stop
     //  This might have a negative performance impact, but is an easy way to avoid race conditions.
     //  E.g. One race condition this avoids is if this RawDevice is destroyed while the thread is still running.
-    _p->runLoopThread.join();
+    runLoopThread.join();
 
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
         return 0;
 
-        // TODO: Return some meaningful error code or something
-
     } else { // Reading was successful
 
-        // Write result to the `report` argument
-        int assignLength = std::min<size_t>(report.size(), _p->lastInputReportLength);
+        // Write result to the `report` argument and return length
+        size_t assignLength = std::min<size_t>(report.size(), _p->lastInputReportLength);
         report.assign(reportBuffer, reportBuffer + assignLength);
-        // Return
-        return reportBufferSize;
+        return assignLength;
     }
 }
 
