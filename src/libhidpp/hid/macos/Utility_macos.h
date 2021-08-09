@@ -40,7 +40,7 @@ public:
     static HID::ReportDescriptor IOHIDDeviceGetReportDescriptor(IOHIDDeviceRef device);
 
     static const char * IOHIDDeviceGetPath(IOHIDDeviceRef device);
-    static void stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef runLoop);
+    static void stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop);
 
     static double timestamp();
 };

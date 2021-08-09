@@ -99,7 +99,7 @@ const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
     return path;
 }
 
-void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef runLoop) {
+void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop) {
 
     // Unregister input report callback
     uint8_t reportBuffer[0]; // Passing this instead of NULL to silence warnings
@@ -113,6 +113,12 @@ void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoop
 
     // If there is nothing else scheduled on the runLoop it should exit automatically after this.
     //  And if there's nothing else scheduled on the thread which the runLoop is running on, it should exit, as well.
+
+    // Force-stop runLoop - probably unnecessary
+    if (runLoop != NULL) {
+        CFRunLoopStop(runLoop);
+        runLoop = NULL;
+    }
 }
 
 // Other

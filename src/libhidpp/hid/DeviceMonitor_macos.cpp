@@ -22,6 +22,8 @@
 #include <misc/Log.h>
 
 #include <string>
+#include <thread>
+
 #include "macos/Utility_macos.h"
 
 extern "C" {
@@ -116,18 +118,37 @@ void DeviceMonitor::enumerate () {
 
 void DeviceMonitor::run () {
 
-	// Start monitor
-	_p->managerRunLoop = CFRunLoopGetCurrent();
-	IOHIDManagerScheduleWithRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
-	// 	^ Matching and removal callbacks defined in constructor will now be active
-
 	// Call addDevice() on all currently attached devices
 	enumerate();
+
+	// Activate device attached/removed callback by scheduling manager with runLoop
+	std::thread runLoopThread([this] () {
+
+		// Store runLoop
+		this->_p->managerRunLoop = CFRunLoopGetCurrent();
+
+		// Associate manager with runLoop
+		IOHIDManagerScheduleWithRunLoop(this->_p->manager, this->_p->managerRunLoop, kCFRunLoopCommonModes); 
+		// 	^ Matching and removal callbacks defined in constructor will now be active
+
+		// Run runLoop
+		//	This will block the current thread. That's why we're executing this on a new thread "runLoopThread"
+		CFRunLoopRun();
+
+		// Set runLoop to NULL after it exits
+		this->_p->managerRunLoop = NULL;
+	});
 }
 
 void DeviceMonitor::stop () {
+
 	// Stop monitor
 	IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
-	// 	^ Matching and removal callbacks defined in constructor deactivate
-	//		Storing managerRunLoop in _p because I think it might be good if the runloop used for scheduling and unscheduling is the same. Not sure if it makes a difference.
+	// 	^ Deactivates matching and removal callbacks defined in constructor
+
+	// Make sure the runLoop stops
+	// 	Probably unnecessary. The runLoop should stop automatically after we unschedule the manager, because it won't have anything to do.
+	if (_p->managerRunLoop != NULL) { 
+		CFRunLoopStop(_p->managerRunLoop);
+	}
 }
