@@ -70,6 +70,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
 
     // Declare vars
     kern_return_t kr;
+    IOReturn ior;
 
     // Convert path to IOKit
     io_string_t ioPath;
@@ -95,7 +96,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _p->iohidDevice = device;
 
     // Open device
-    IOReturn ior = IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); // Necessary to change the state of the device
+    ior = IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); // Necessary to change the state of the device
     if (ior != kIOReturnSuccess) {
         // TODO: Throw and error or something
     }
@@ -107,7 +108,13 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _vendor_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDVendorIDKey));
     _product_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDProductIDKey));
     _name = Utility_macos::IOHIDDeviceGetStringProperty(device, CFSTR(kIOHIDProductKey));
-    _report_desc = Utility_macos::IOHIDDeviceGetReportDescriptor(device);
+    
+    try { // Try-except copied from the Linux implementation
+        _report_desc = Utility_macos::IOHIDDeviceGetReportDescriptor(device);
+        logReportDescriptor();
+    } catch (std::exception &e) {
+        Log::error () << "Invalid report descriptor: " << e.what () << std::endl;
+    }
 
     // Fill out private member variables
     _p->maxInputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxInputReportSizeKey));
