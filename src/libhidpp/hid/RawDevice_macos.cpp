@@ -128,7 +128,20 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
                                                _name(other._name),
                                                _report_desc(other._report_desc)
 {
-    // I don't know what this is supposed to to
+    // Copy constructor
+    
+    // Copy values from `other` to `this`
+
+    _p->iohidDevice = other._p->iohidDevice;
+    // ^ As far as I understand, iohidDevices can't be copied, so we're just assigning it.
+    _p->maxInputReportSize = other._p->maxInputReportSize;
+    _p->maxOutputReportSize = other._p->maxOutputReportSize;
+    _p->lastInputReportLength = 0;
+    // ^ This is only used by readReport() to communicated with its callback. Doesn't make sense to be copied.
+    _p->inputReportRunLoop = nullptr; 
+    // ^ runLoops are per thread and can't be copied.
+    _p->preventNextRead = false;
+    // ^ This could be copied but that probably doesn't make sense.
 }
 
 RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
@@ -136,7 +149,27 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
                                           _name(std::move(other._name)),
                                           _report_desc(std::move(other._report_desc))
 {
-    // I don't know what this is supposed to to
+    // Move constructor
+    // How to write move constructor: https://stackoverflow.com/a/43387612/10601702
+
+    // Assign values from `other` to `this`
+
+    _p->iohidDevice = other._p->iohidDevice;
+    _p->maxInputReportSize = other._p->maxInputReportSize;
+    _p->maxOutputReportSize = other._p->maxOutputReportSize;
+    _p->lastInputReportLength = 0;
+    _p->inputReportRunLoop = nullptr;
+    _p->preventNextRead = false;
+
+    // Set `other` pointers to null
+
+    other._p->iohidDevice = nullptr;
+    other._p->maxInputReportSize = 0;
+    other._p->maxOutputReportSize = 0;
+    other._p->lastInputReportLength = 0;
+    other._p->inputReportRunLoop = nullptr;
+    other._p->preventNextRead = false;
+
 }
 
 // Destructor
