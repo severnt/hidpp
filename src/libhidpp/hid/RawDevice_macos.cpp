@@ -249,9 +249,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Unregister input report callback
     //  This is probably unnecessary
-    uint8_t reportBuffer[0]; // Passing this instead of NULL to silence warnings
-    CFIndex reportLength = 0;
-    IOHIDDeviceRegisterInputReportCallback(_p->iohidDevice, reportBuffer, reportLength, NULL, NULL); 
+    uint8_t nullReportBuffer[0]; // Passing this instead of NULL to silence warnings
+    CFIndex nullReportLength = 0;
+    IOHIDDeviceRegisterInputReportCallback(_p->iohidDevice, nullReportBuffer, nullReportLength, NULL, NULL); 
     //  ^ Passing NULL for the callback unregisters the previous callback.
     //      Not sure if redundant when already calling IOHIDDeviceUnscheduleFromRunLoop.
 
