@@ -3,7 +3,7 @@
         {
             "label": "build_stuff",
             "type": "shell",
-            "command": "cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && make",
+            "command": "mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && make",
         },
         {
             "type": "cppbuild",
