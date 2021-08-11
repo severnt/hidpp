@@ -49,14 +49,10 @@ struct RawDevice::PrivateImpl
 
     CFIndex maxInputReportSize;
     CFIndex maxOutputReportSize;
+
     CFIndex lastInputReportLength;
-
     CFRunLoopRef inputReportRunLoop;
-
-    std::mutex inputReportMutex;
-    // std::condition_variable inputReportBlocker;
-    bool waitingForInputReport; 
-    //  ^ Using primitive method for blocking thread instead of inputReportBlocker for debugging. Remove this once inputReportBlocker works.
+    bool preventNextRead;
 };
 
 // Private constructor
@@ -184,6 +180,8 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Prevent multiple threads from executing this function at the same time
     //  This is super inefficient when there are multiple threads trying to enter, but it's an easy way to avoid race conditions
     //  Making it so multiple threads can enter at the same time safely should be possible but would require a lot of extra work I think
+    //  TODO: readReport doesn't need to be thread safe according to cvuchner, to we should remove this.
+    //      See: https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
     static std::mutex m;
     const std::lock_guard<std::mutex> lock(m);
 
@@ -191,61 +189,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     timeout *= 10;
     // Convert timeout to seconds instead of milliseconds
     double timeoutSeconds = timeout / 1000.0;
-
-    // Get runLoop
-
-    bool runLoopIsSetUp = false;
-
-    if (this->_p->inputReportRunLoop != NULL) {
-
-        // There's already a running runLoop for this device.
-        //  This probably means that another attempt to readReport's is already in progress
-
-        Log::warning () << "Requested input report with a runLoop already running" << std::endl;
-
-        runLoopIsSetUp = true;
-
-    } else {
-
-        // Setup runLoop on a new thread
-        //  We want to block the current function to wait for the inputReport to be read. 
-        //  But that will also block the runLoop if the runLoop belongs to the current thread, which will prevent the inputReportCallback from firing.
-        //  So we need the runLoop to belong to a different thread.
-
-        std::thread runLoopThread([this, &runLoopIsSetUp]() {
-
-            // Get runLoop
-            this->_p->inputReportRunLoop = CFRunLoopGetCurrent();;
-
-            // Add IOHIDDevice to runLoop.
-            //  Async callbacks for this IOHIDDevice will be delivered to this runLoop
-            //  We need to call this before CFRunLoopRun, because if the runLoop has nothing to do, it'll immediately exit when we try to run it.
-            IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
-
-            // Signal
-            runLoopIsSetUp = true;
-
-            // Start runLoop
-            //  Calling this blocks this thread until the runLoop exits.
-            CFRunLoopRun();
-
-            // Delete runLoop
-            //  By setting to NULL after the runLoop exits, we can see whether or not there's a running runLoop for this device from other places.
-            this->_p->inputReportRunLoop = NULL;
-        });
-    }
-
-    // Wait for runLoop setup
-
-    // Loop-based waiting
-    while (!runLoopIsSetUp) { } 
-    // ^ This is not optimal because:
-    //      1. It will unblock slightly before CFRunLoopRun() is called. Probably not an issue though, hidapi also does it like this.
-    //      2. It's looping, not using a callback, which might be bad for performance.
-    //      A better solution would be using a thread lock and to observe when the runLoop starts running with a callback.
-
-    // Lock-based waiting
-    //  TODO
 
     // Setup reportBuffer
     CFIndex reportBufferSize = _p->maxInputReportSize;
@@ -257,10 +200,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //  Should only be used by this function. It's only a global variable so that the inputReportCallback can access it.
     _p->lastInputReportLength = -1;
 
-    // Init primitive method for waiting for input report
-    _p->waitingForInputReport = true;
-
-    // Get report
+    // Setup report callback
     //  IOHIDDeviceGetReportWithCallback has a built-in timeout and allows you to specify IOHIDReportType, 
     //      but Apple docs say it should only be used for feature reports. So we're using 
     //      IOHIDDeviceRegisterInputReportCallback instead.
@@ -273,58 +213,55 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
             RawDevice *thisss = static_cast<RawDevice *>(context); //  Get `this` from context
             //  ^ We can't capture `this` or anything else, because then the enclosing lambda wouldn't decay to a pure c function
 
-            // thisss->_p->inputReportBlocker.notify_all(); // Report was received -> stop waiting for report
-            thisss->_p->waitingForInputReport = false;
             thisss->_p->lastInputReportLength = reportLength;
+            CFRunLoopStop(thisss->_p->inputReportRunLoop); 
+            // ^ Aka CFRunLoopGetCurrent() because this callback is driven by that runLoop
         }, 
         this // Pass `this` to context
     );
 
-    // Wake up runLoop. Not sure if necessary.
-    CFRunLoopWakeUp(_p->inputReportRunLoop);
+    // Start runLoop
 
-    // Wait for input report until on of these happens
-    //  - Device sends input report
-    //  - Timeout happens
-    //  - interruptRead() is called
+    // Store current runLoop
+    this->_p->inputReportRunLoop = CFRunLoopGetCurrent();
 
-    // Loop-based waiting
-    //  Using a simpler method of waiting for input to help debugging. Move to lock-based waiting once everything else works.
+    // Add IOHIDDevice to runLoop.
+    //  Async callbacks for this IOHIDDevice will be delivered to this runLoop
+    //  We need to call this before CFRunLoopRun, because if the runLoop has nothing to do, it'll immediately exit when we try to run it.
+    IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
-    double startOfWait = Utility_macos::timestamp();
-    
-    while (true) {
-        if (!_p->waitingForInputReport) { 
-            break; 
-        };
-        if (0 <= timeout) { // Only time out if `timeout` is non-negative
-            double now = Utility_macos::timestamp();
-            if ((now - startOfWait) > timeoutSeconds) { 
-                break; 
-            }
-        }
+    // Start runLoop
+    //  Calling this blocks this thread and until the runLoop exits.
+    //  We only exit the runLoop if one of these happens
+    //      - Device sends input report
+    //      - Timeout happens
+    //      - interruptRead() is called
+    //  If interruptRead has been called before this point, that will have 
+    //      set preventNextRead = true. In that case we wont enter the input-listening runLoop, and not block and return immediately.
+
+    if (!_p->preventNextRead) {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
     }
+    // Reset preventNextRead
+    _p->preventNextRead = false;
 
-    // Lock-based waiting
+    // Tear down runLoop after it exits 
 
-    // Create lock for waiting
-    // std::unique_lock<std::mutex> lock(_p->inputReportMutex); // I think this also locks the lock. Lock needs to be locked for inputReportBlocker to work.
-    // lock.lock();
+    // Unregister input report callback
+    //  This is probably unnecessary
+    uint8_t reportBuffer[0]; // Passing this instead of NULL to silence warnings
+    CFIndex reportLength = 0;
+    IOHIDDeviceRegisterInputReportCallback(_p->iohidDevice, reportBuffer, reportLength, NULL, NULL); 
+    //  ^ Passing NULL for the callback unregisters the previous callback.
+    //      Not sure if redundant when already calling IOHIDDeviceUnscheduleFromRunLoop.
 
-    // if (timeout < 0) { // Negative `timeout` means no timeout
-    //     _p->inputReportBlocker.wait(lock);
-    // } else {
-    //     std::chrono::milliseconds cppTimeout(timeout);
-    //     _p->inputReportBlocker.wait_for(lock, cppTimeout);
-    // }
+    // Remove device from runLoop
+    //  This is probably unnecessary
+    IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
-    // Stop listening for reports
-    Utility_macos::stopListeningToInputReports(_p->iohidDevice, _p->inputReportRunLoop);
-
-    // Wait for runLoopThread to stop
-    //  This might have a negative performance impact, but is an easy way to avoid race conditions.
-    //  E.g. One race condition this avoids is if this RawDevice is destroyed while the thread is still running.
-    runLoopThread.join();
+    // Delete stored runLoop 
+    //  By setting to NULL after the runLoop exits, we can see whether or not this function is currently waiting for input.
+    this->_p->inputReportRunLoop = NULL;
 
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
@@ -340,6 +277,15 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 }
 
 void RawDevice::interruptRead() {
-    // _p->inputReportBlocker.notify_all(); // Stop waiting for report
-    _p->waitingForInputReport = false;
+
+    if (_p->inputReportRunLoop) { 
+        // readReport() is currently blocking and waiting for a report 
+        //      -> Stop it from waiting and return immediately
+        CFRunLoopStop(_p->inputReportRunLoop);
+    } else {
+        // readReport() is not currently blocking 
+        //      -> Make it return immediately the next time it wants to block and wait for input
+        //  This is the expected behaviour according to https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
+        _p->preventNextRead = true;
+    }
 }

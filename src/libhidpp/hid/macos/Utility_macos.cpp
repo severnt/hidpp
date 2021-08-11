@@ -101,6 +101,7 @@ const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
 }
 
 void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop) {
+    // This function is unused. Only to be used as reference. Delete at some point.
 
     // Unregister input report callback
     uint8_t reportBuffer[0]; // Passing this instead of NULL to silence warnings
