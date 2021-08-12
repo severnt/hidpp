@@ -52,6 +52,7 @@ struct RawDevice::PrivateImpl
 
     CFIndex lastInputReportLength;
     CFRunLoopRef inputReportRunLoop;
+    bool readIsBlocking;
     bool preventNextRead;
 };
 
@@ -274,7 +275,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //      set preventNextRead = true. In that case we wont enter the input-listening runLoop, and not block and return immediately.
 
     if (!_p->preventNextRead) {
+        _p->readIsBlocking = true;
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
+        _p->readIsBlocking = false;
     }
     // Reset preventNextRead
     _p->preventNextRead = false;
@@ -293,10 +296,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //  This is probably unnecessary
     IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
-    // Delete stored runLoop 
-    //  By setting to NULL after the runLoop exits, we can see whether or not this function is currently waiting for input.
-    this->_p->inputReportRunLoop = NULL;
-
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
         return 0;
@@ -312,13 +311,13 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
 void RawDevice::interruptRead() {
 
-    if (_p->inputReportRunLoop) { 
+    if (_p->readIsBlocking) { 
         // readReport() is currently blocking and waiting for a report 
         //      -> Stop it from waiting and return immediately
         CFRunLoopStop(_p->inputReportRunLoop);
     } else {
         // readReport() is not currently blocking 
-        //      -> Make it return immediately the next time it wants to block and wait for input
+        //      -> Make it return immediately the next time it wants to block and wait for input.
         //  This is the expected behaviour according to https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
         _p->preventNextRead = true;
     }
