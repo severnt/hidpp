@@ -134,13 +134,19 @@ void DeviceMonitor::run () {
 		// Store runLoop
 		this->_p->managerRunLoop = CFRunLoopGetCurrent();
 
-		// Associate manager with runLoop
+		// Add device manager to runLoop
 		IOHIDManagerScheduleWithRunLoop(this->_p->manager, this->_p->managerRunLoop, kCFRunLoopCommonModes); 
 		// 	^ Matching and removal callbacks defined in constructor will now be active
 
 		// Run runLoop
-		//	This will block the current thread. That's why we're executing this on a new thread "runLoopThread"
+		//	This will block the current thread until it exits
 		CFRunLoopRun();
+
+		// Cleanup runLoop after it exits
+
+		// Stop monitor
+		IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
+		// 	^ Deactivates matching and removal callbacks defined in constructor
 
 		// Set runLoop to NULL after it exits
 		this->_p->managerRunLoop = NULL;
@@ -151,11 +157,7 @@ void DeviceMonitor::run () {
 
 void DeviceMonitor::stop () {
 
-	// Stop monitor
-	IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
-	// 	^ Deactivates matching and removal callbacks defined in constructor
-
-	// Make sure the runLoop stops
+	// Force-stop the runLoop
 	// 	Probably unnecessary. The runLoop should stop automatically after we unschedule the manager, because it won't have anything to do.
 	if (_p->managerRunLoop != NULL) { 
 		CFRunLoopStop(_p->managerRunLoop);
