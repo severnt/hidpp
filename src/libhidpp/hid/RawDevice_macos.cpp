@@ -134,8 +134,9 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
     
     // Copy values from `other` to `this`
 
-    _p->iohidDevice = other._p->iohidDevice;
-    // ^ As far as I understand, iohidDevices can't be copied, so we're just assigning it.
+    io_service_t service = IOHIDDeviceGetService(other._p->iohidDevice);
+    _p->iohidDevice = IOHIDDeviceCreate(kCFAllocatorDefault, service);
+    // ^ Copy iohidDevice. I'm not sure this way of copying works
     _p->maxInputReportSize = other._p->maxInputReportSize;
     _p->maxOutputReportSize = other._p->maxOutputReportSize;
     _p->lastInputReportLength = 0;
