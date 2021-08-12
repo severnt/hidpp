@@ -128,31 +128,25 @@ void DeviceMonitor::run () {
 	// Call addDevice() on all currently attached devices
 	enumerate();
 
-	// Activate device attached/removed callback by scheduling manager with runLoop
-	std::thread runLoopThread([this] () {
+	// Store runLoop
+	this->_p->managerRunLoop = CFRunLoopGetCurrent();
 
-		// Store runLoop
-		this->_p->managerRunLoop = CFRunLoopGetCurrent();
+	// Add device manager to runLoop
+	IOHIDManagerScheduleWithRunLoop(this->_p->manager, this->_p->managerRunLoop, kCFRunLoopCommonModes); 
+	// 	^ Matching and removal callbacks defined in constructor will now be active
 
-		// Add device manager to runLoop
-		IOHIDManagerScheduleWithRunLoop(this->_p->manager, this->_p->managerRunLoop, kCFRunLoopCommonModes); 
-		// 	^ Matching and removal callbacks defined in constructor will now be active
+	// Run runLoop
+	//	This will block the current thread until it exits
+	CFRunLoopRun();
 
-		// Run runLoop
-		//	This will block the current thread until it exits
-		CFRunLoopRun();
+	// Cleanup runLoop after it exits
 
-		// Cleanup runLoop after it exits
+	// Stop monitor
+	IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
+	// 	^ Deactivates matching and removal callbacks defined in constructor
 
-		// Stop monitor
-		IOHIDManagerUnscheduleFromRunLoop(_p->manager, _p->managerRunLoop, kCFRunLoopCommonModes); 
-		// 	^ Deactivates matching and removal callbacks defined in constructor
-
-		// Set runLoop to NULL after it exits
-		this->_p->managerRunLoop = NULL;
-	});
-
-	runLoopThread.detach(); // Otherwise the runLoopThread would be destroyed once this scope is exited
+	// Set runLoop to NULL after it exits
+	this->_p->managerRunLoop = NULL;
 }
 
 void DeviceMonitor::stop () {
