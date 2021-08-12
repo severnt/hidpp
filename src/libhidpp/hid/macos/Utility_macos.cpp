@@ -49,11 +49,17 @@ long Utility_macos::CFNumberToInt(CFNumberRef cfNumber) {
 
 std::string Utility_macos::CFStringToString(CFStringRef cfString) {
 
-    const char *cString = CFStringGetCStringPtr(cfString, kCFStringEncodingUTF8);
 
-    std::string result(cString);
+    CFIndex length = CFStringGetLength(cfString);
+    char buffer[length];
 
-    return result;
+    bool success = CFStringGetCString(cfString, buffer, length, kCFStringEncodingUTF8);
+
+    if (!success) {
+        // TODO: Throw error
+    }
+
+    return std::string(buffer);
 }
 
 std::vector<uint8_t> Utility_macos::CFDataToByteVector(CFDataRef cfData) {

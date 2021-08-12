@@ -87,7 +87,9 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     }
     CFDictionaryRef matchDict = IORegistryEntryIDMatching(entryID);
     io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matchDict);
-    // ^ TODO: Check that the service is valid
+    if (service == 0) { // Idk what this returns when it can't find a matching service
+
+    }
 
     // Create IOHIDDevice from service
     IOHIDDeviceRef device = IOHIDDeviceCreate(kCFAllocatorDefault, service);
@@ -105,10 +107,11 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _p->iohidDevice = device;
 
     // Fill out public member variables
+
     _vendor_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDVendorIDKey));
     _product_id = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDProductIDKey));
     _name = Utility_macos::IOHIDDeviceGetStringProperty(device, CFSTR(kIOHIDProductKey));
-    
+
     try { // Try-except copied from the Linux implementation
         _report_desc = Utility_macos::IOHIDDeviceGetReportDescriptor(device);
         logReportDescriptor();
@@ -119,8 +122,6 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // Fill out private member variables
     _p->maxInputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxInputReportSizeKey));
     _p->maxOutputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxOutputReportSizeKey));
-
-    // TODO: Release stuff
 }
 
 RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>()),
@@ -175,7 +176,6 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
 // Destructor
 
 RawDevice::~RawDevice(){
-    // Utility_macos::stopListeningToInputReports(_p->iohidDevice, _p->inputReportRunLoop); // Not necessary anymore - remove
     IOHIDDeviceClose(_p->iohidDevice, kIOHIDOptionsTypeNone); // Not sure if necessary
     CFRelease(_p->iohidDevice); // Not sure if necessary
 }
@@ -191,7 +191,8 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
     // Guard report size
     if (report.size() > _p->maxOutputReportSize) {
-        // TODO: Return error
+        // TODO: Return meaningful error
+        return 1;
     }
 
     // Gather args for report sending
@@ -207,6 +208,7 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
     // Return error code
     if (r != kIOReturnSuccess) {
         // TODO: Return some meaningful error code
+        return r;
     }
 
     // Return success
@@ -216,14 +218,6 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 // readReport
 
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
-
-    // Prevent multiple threads from executing this function at the same time
-    //  This is super inefficient when there are multiple threads trying to enter, but it's an easy way to avoid race conditions
-    //  Making it so multiple threads can enter at the same time safely should be possible but would require a lot of extra work I think
-    //  TODO: readReport doesn't need to be thread safe according to cvuchner, to we should remove this.
-    //      See: https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
-    static std::mutex m;
-    const std::lock_guard<std::mutex> lock(m);
 
     // Inflate timeout for debugging
     timeout *= 10;
