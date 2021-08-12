@@ -278,7 +278,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         _p->readIsBlocking = false;
     }
     // Reset preventNextRead
-    _p->preventNextRead = false;
+    _p->preventNextRead = false; // Should this be at the end of the function to prevent race conditions?
 
     // Tear down runLoop after it exits 
 
