@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/src/tools/${input:pickTool}",
-            "args": [],
+            "args": ["${input:argument}"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
@@ -22,8 +22,19 @@
         {
             "id": "pickTool",
             "description": "Pick the command-line-tool you want to debug",
-            "type": "promptString",
-            "default": "hidpp-list-devices"
+            "type": "pickString",
+            "default": "hidpp-list-devices",
+            "options": ["hidpp-check-device", "hidpp-list-devices", "hidpp-list-features", "hidpp-mouse-resolution", "hidpp-persistent-profiles", 
+                "hidpp10-active-profile", "hidpp10-dump-page", "hidpp10-load-temp-profile", "hidpp10-raw-command", "hidpp10-write-page", 
+                "hidpp20-call-function", "hidpp20-dump-page", "hidpp20-led-control", "hidpp20-onboard-profiles-get-description", "hidpp20-reprog-controls", "hidpp20-write-data", "hidpp20-write-page"]
         }
+        {
+            "id": "argument",
+            "description": "Enter the command-line argument",
+            "type": "promptString",
+            "default": "IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/XHC1@14/XHC1@14000000/HS02@14200000/USB Receiver@14200000/IOUSBHostInterface@2/AppleUserUSBHostHIDDevice" // My M720
+            
+        }
+
     ]
 }
