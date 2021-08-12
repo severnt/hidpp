@@ -220,8 +220,6 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
-    // Inflate timeout for debugging
-    timeout *= 10;
     // Convert timeout to seconds instead of milliseconds
     double timeoutSeconds = timeout / 1000.0;
 
@@ -241,7 +239,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //      IOHIDDeviceRegisterInputReportCallback instead.
     IOHIDDeviceRegisterInputReportCallback(
         _p->iohidDevice, 
-        reportBuffer, 
+        reportBuffer, // This will get filled when an inputReport occurs
         _p->maxInputReportSize,
         [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
 
