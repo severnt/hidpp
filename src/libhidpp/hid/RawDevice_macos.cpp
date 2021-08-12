@@ -273,7 +273,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //      set preventNextRead = true. In that case we wont enter the input-listening runLoop, and not block and return immediately.
 
     if (!_p->preventNextRead) {
-        _p->readIsBlocking = true;
+        _p->readIsBlocking = true; // Should only be mutated right here.
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
         _p->readIsBlocking = false;
     }
@@ -284,14 +284,14 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Unregister input report callback
     //  This is probably unnecessary
-    uint8_t nullReportBuffer[0]; // Passing this instead of NULL to silence warnings
+    uint8_t nullReportBuffer[0];
     CFIndex nullReportLength = 0;
     IOHIDDeviceRegisterInputReportCallback(_p->iohidDevice, nullReportBuffer, nullReportLength, NULL, NULL); 
     //  ^ Passing NULL for the callback unregisters the previous callback.
     //      Not sure if redundant when already calling IOHIDDeviceUnscheduleFromRunLoop.
 
     // Remove device from runLoop
-    //  This is probably unnecessary
+    //  This is probably unnecessary since we're already stopping the runLoop via CFRunLoopStop()
     IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
