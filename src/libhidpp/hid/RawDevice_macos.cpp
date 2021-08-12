@@ -277,8 +277,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
         _p->readIsBlocking = false;
     }
-    // Reset preventNextRead
-    _p->preventNextRead = false; // Should this be at the end of the function to prevent race conditions?
 
     // Tear down runLoop after it exits 
 
@@ -294,17 +292,28 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //  This is probably unnecessary since we're already stopping the runLoop via CFRunLoopStop()
     IOHIDDeviceUnscheduleFromRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
 
+    // Get return values
+
+    int returnValue;
+
     if (_p->lastInputReportLength == -1) { // Reading has timed out or was interrupted
 
-        return 0;
+        returnValue = 0;
 
     } else { // Reading was successful
 
         // Write result to the `report` argument and return length
         size_t assignLength = std::min<size_t>(report.size(), _p->lastInputReportLength);
         report.assign(reportBuffer, reportBuffer + assignLength);
-        return assignLength;
+
+        returnValue =  assignLength;
     }
+
+    // Reset preventNextRead
+    _p->preventNextRead = false; // Resetting this down here to prevent possible race conditions
+
+    // Return
+    return returnValue;
 }
 
 void RawDevice::interruptRead() {
