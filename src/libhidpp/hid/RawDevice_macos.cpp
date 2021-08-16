@@ -101,7 +101,12 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // Open device
     ior = IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); // Necessary to change the state of the device
     if (ior != kIOReturnSuccess) {
-        // TODO: Throw and error or something
+        Log::warning() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetUniqueIdentifier(_p->iohidDevice) << "\" failed with error code " << ior << std::endl;
+        
+    } else {
+        // Log::info().printf("Opening the device \"%s\" succeded", Utility_macos::IOHIDDeviceGetUniqueIdentifier(_p->iohidDevice));
+        // ^ printf() function on Log doesn't work properly here for some reason. Shows up in vscode debug console but not in Terminal, even with the -vdebug option. Logging with the << syntax instead of printf works though. In Utility_macos the printf function works for some reason. TODO: Ask Clément about this.
+        Log::info() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetUniqueIdentifier(_p->iohidDevice) << "\" succeded" << std::endl;
     }
 
     // Store IOHIDDevice in self

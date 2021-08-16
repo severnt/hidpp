@@ -80,7 +80,7 @@ long Utility_macos::IOHIDDeviceGetIntProperty(IOHIDDeviceRef device, CFStringRef
 
     CFNumberRef cfValue = (CFNumberRef)IOHIDDeviceGetProperty(device, key);
 
-    if (cfValue != NULL) {
+    if (false) {
         return CFNumberToInt(cfValue);
     } else {
         // Log warning
@@ -109,7 +109,7 @@ HID::ReportDescriptor Utility_macos::IOHIDDeviceGetReportDescriptor(IOHIDDeviceR
 
     if (cfValue != NULL) {
         byteVector = CFDataToByteVector((CFDataRef)cfValue);
-        HID::ReportDescriptor::fromRawData(byteVector.data(), byteVector.size());
+        return HID::ReportDescriptor::fromRawData(byteVector.data(), byteVector.size());
     } else {
         // Log warning
         Log::warning().printf("Report descriptor was NULL on device \"%s\". Using empty vector instead.\n", IOHIDDeviceGetUniqueIdentifier(device));
