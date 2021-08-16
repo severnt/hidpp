@@ -43,4 +43,6 @@ public:
     static void stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop);
 
     static double timestamp();
+
+    static const char * IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device);
 };

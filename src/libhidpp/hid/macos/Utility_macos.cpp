@@ -20,6 +20,7 @@
 
 #include "Utility_macos.h"
 #include <chrono>
+#include "../../misc/Log.h"
 
 extern "C" {
     #include <stdbool.h>
@@ -76,17 +77,45 @@ std::vector<uint8_t> Utility_macos::CFDataToByteVector(CFDataRef cfData) {
 // Convenience wrappers IOHIDDeviceGetProperty
 
 long Utility_macos::IOHIDDeviceGetIntProperty(IOHIDDeviceRef device, CFStringRef key) {
-    return CFNumberToInt((CFNumberRef)IOHIDDeviceGetProperty(device, key));
+
+    CFNumberRef cfValue = (CFNumberRef)IOHIDDeviceGetProperty(device, key);
+
+    if (cfValue != NULL) {
+        return CFNumberToInt(cfValue);
+    } else {
+        // Log warning
+        Log::warning().printf("Property %s was NULL on device \"%s\". Using 0 instead.\n", CFStringGetCStringPtr(key, kCFStringEncodingUTF8), IOHIDDeviceGetUniqueIdentifier(device));
+        // Return
+        return 0;
+    }
 }
 
 std::string Utility_macos::IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, CFStringRef key) {
-    return CFStringToString((CFStringRef)IOHIDDeviceGetProperty(device, key));    
+    CFStringRef cfValue = (CFStringRef)IOHIDDeviceGetProperty(device, key);
+    if (cfValue != NULL) {
+        return CFStringToString(cfValue);
+    } else {
+        // Log warning
+        Log::warning().printf("Property %s was NULL on device \"%s\". Using empty string instead.\n", CFStringGetCStringPtr(key, kCFStringEncodingUTF8), IOHIDDeviceGetUniqueIdentifier(device));
+        // Return
+        return "";
+    }
 }
 
 HID::ReportDescriptor Utility_macos::IOHIDDeviceGetReportDescriptor(IOHIDDeviceRef device) {
+
     CFTypeRef cfValue = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDReportDescriptorKey));
-    std::vector<uint8_t> byteVector = CFDataToByteVector((CFDataRef)cfValue);
-    return HID::ReportDescriptor::fromRawData(byteVector.data(), byteVector.size());
+    std::vector<uint8_t> byteVector;
+
+    if (cfValue != NULL) {
+        byteVector = CFDataToByteVector((CFDataRef)cfValue);
+        HID::ReportDescriptor::fromRawData(byteVector.data(), byteVector.size());
+    } else {
+        // Log warning
+        Log::warning().printf("Report descriptor was NULL on device \"%s\". Using empty vector instead.\n", IOHIDDeviceGetUniqueIdentifier(device));
+        // We want to return an empty report descriptor here. TODO: Make sure `return HID::ReportDescriptor();` works for that.
+        return HID::ReportDescriptor();
+    }
 }
 
 // Other IOHIDDevice helpers
@@ -127,6 +156,13 @@ void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoop
         CFRunLoopStop(runLoop);
         runLoop = NULL;
     }
+}
+
+const char * Utility_macos::IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device) {
+    /// This is currently the device path. We should base this on the registryEntryID at some point, because of issues with long paths (see HIDAPI Github issues)
+
+    return Utility_macos::IOHIDDeviceGetPath(device);
+
 }
 
 // Other
