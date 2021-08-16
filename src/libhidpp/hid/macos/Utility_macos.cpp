@@ -80,11 +80,11 @@ long Utility_macos::IOHIDDeviceGetIntProperty(IOHIDDeviceRef device, CFStringRef
 
     CFNumberRef cfValue = (CFNumberRef)IOHIDDeviceGetProperty(device, key);
 
-    if (false) {
+    if (cfValue != NULL) {
         return CFNumberToInt(cfValue);
     } else {
         // Log warning
-        Log::warning().printf("Property %s was NULL on device \"%s\". Using 0 instead.\n", CFStringGetCStringPtr(key, kCFStringEncodingUTF8), IOHIDDeviceGetUniqueIdentifier(device));
+        Log::warning().printf("Property \"%s\" was NULL on device \"%s\". Using 0 instead.\n", CFStringGetCStringPtr(key, kCFStringEncodingUTF8), IOHIDDeviceGetUniqueIdentifier(device));
         // Return
         return 0;
     }
@@ -96,7 +96,7 @@ std::string Utility_macos::IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, C
         return CFStringToString(cfValue);
     } else {
         // Log warning
-        Log::warning().printf("Property %s was NULL on device \"%s\". Using empty string instead.\n", CFStringGetCStringPtr(key, kCFStringEncodingUTF8), IOHIDDeviceGetUniqueIdentifier(device));
+        Log::warning().printf("Property \"%s\" was NULL on device \"%s\". Using empty string instead.\n", CFStringGetCStringPtr(key, kCFStringEncodingUTF8), IOHIDDeviceGetUniqueIdentifier(device));
         // Return
         return "";
     }

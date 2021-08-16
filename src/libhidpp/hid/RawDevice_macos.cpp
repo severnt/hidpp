@@ -279,9 +279,26 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //      set preventNextRead = true. In that case we wont enter the input-listening runLoop, and not block and return immediately.
 
     if (!_p->preventNextRead) {
+
+        // Run runLoop
         _p->readIsBlocking = true; // Should only be mutated right here.
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
+        CFRunLoopRunResult runLoopResult = CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
         _p->readIsBlocking = false;
+
+        // Analyze runLoop exit reason
+        std::string runLoopResultString;
+        if (runLoopResult == kCFRunLoopRunFinished) {
+            runLoopResultString = "Finished";
+        } else if (runLoopResult == kCFRunLoopRunHandledSource) {
+            runLoopResultString = "HandledSource";
+        } else if (runLoopResult == kCFRunLoopRunStopped) {
+            runLoopResultString = "Stopped";
+        } else if (runLoopResult == kCFRunLoopRunTimedOut) {
+            runLoopResultString = "TimedOut";
+        } else {
+            runLoopResultString = "UnknownResult";
+        }
+        Log::debug() << "inputReportRunLoop exited with result: " << runLoopResultString << std::endl;
     }
 
     // Tear down runLoop after it exits 
