@@ -144,12 +144,10 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
     // ^ Copy iohidDevice. I'm not sure this way of copying works
     _p->maxInputReportSize = other._p->maxInputReportSize;
     _p->maxOutputReportSize = other._p->maxOutputReportSize;
+    // We don't copy the following 3 properties since they are not really device properties, but part of the state of an ongoing read, and so I think they don't make sense to copy.
     _p->lastInputReportLength = 0;
-    // ^ This is only used by readReport() to communicated with its callback. Doesn't make sense to be copied.
     _p->inputReportRunLoop = nullptr; 
-    // ^ runLoops are per thread and can't be copied.
     _p->preventNextRead = false;
-    // ^ This could be copied but that probably doesn't make sense.
 }
 
 RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
@@ -169,7 +167,7 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
     _p->inputReportRunLoop = nullptr;
     _p->preventNextRead = false;
 
-    // Set `other` pointers to null
+    // Nullify `other` values
 
     other._p->iohidDevice = nullptr;
     other._p->maxInputReportSize = 0;
@@ -240,7 +238,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     _p->lastInputReportLength = -1;
 
     // Setup report callback
-    //  IOHIDDeviceGetReportWithCallback has a built-in timeout and allows you to specify IOHIDReportType, 
+    //  IOHIDDeviceGetReportWithCallback has a built-in timeout and might make for more straight forward code
     //      but Apple docs say it should only be used for feature reports. So we're using 
     //      IOHIDDeviceRegisterInputReportCallback instead.
     IOHIDDeviceRegisterInputReportCallback(
@@ -276,13 +274,13 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     //      - Timeout happens
     //      - interruptRead() is called
     //  If interruptRead has been called before this point, that will have 
-    //      set preventNextRead = true. In that case we wont enter the input-listening runLoop, and not block and return immediately.
+    //      set preventNextRead = true. In that case we wont enter the input-listening runLoop, and we won't block and return immediately instead.
 
     if (!_p->preventNextRead) {
 
         // Run runLoop
         _p->readIsBlocking = true; // Should only be mutated right here.
-        CFRunLoopRunResult runLoopResult = CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false);
+        CFRunLoopRunResult runLoopResult = CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false); // It may make sense to set the last argument `returnAfterSourceHandled` to `true` since we only want to read one report and then stop the runLoop
         _p->readIsBlocking = false;
 
         // Analyze runLoop exit reason
