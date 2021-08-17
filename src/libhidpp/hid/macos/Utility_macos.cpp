@@ -32,6 +32,10 @@ void Utility_macos::stringToIOString(std::string string, io_string_t &ioString) 
     strcpy(ioString, string.c_str());
 }
 
+CFStringRef Utility_macos::stringToCFString(std::string string) {
+    return CFStringCreateWithCString(kCFAllocatorDefault, string.c_str(), kCFStringEncodingUTF8);
+}
+
 // Convert Cocoa -> Cpp
 
 long Utility_macos::CFNumberToInt(CFNumberRef cfNumber) {

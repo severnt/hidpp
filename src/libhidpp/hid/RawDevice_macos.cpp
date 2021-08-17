@@ -73,12 +73,11 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     kern_return_t kr;
     IOReturn ior;
 
-    // Convert path to IOKit
-    io_string_t ioPath;
-    Utility_macos::stringToIOString(path, ioPath);
+    // Convert path to CF
+    CFStringRef cfPath = Utility_macos::stringToCFString(path);
 
     // Get registryEntry from path
-    const io_registry_entry_t registryEntry = IORegistryEntryFromPath(kIOMasterPortDefault, ioPath);
+    const io_registry_entry_t registryEntry = IORegistryEntryCopyFromPath(kIOMasterPortDefault, cfPath);
 
     // Get service from registryEntry
     uint64_t entryID;
