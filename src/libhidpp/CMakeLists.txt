@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.8)
 project(libhidpp)
 
 set(LIBHIDPP_SOURCES
@@ -72,13 +72,22 @@ elseif("${HID_BACKEND}" STREQUAL "macos")
 	)
 endif()
 
+# include_directories(.)
+# add_library(hidpp SHARED ${LIBHIDPP_SOURCES})
+add_library(hidpp ${LIBHIDPP_SOURCES})
+set_target_properties(hidpp PROPERTIES VERSION 0.2)
+target_include_directories(hidpp PUBLIC
+	$<INSTALL_INTERFACE:include/hidpp>
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
-include_directories(.)
-add_library(hidpp SHARED ${LIBHIDPP_SOURCES})
 if("${HID_BACKEND}" STREQUAL "linux")
-	target_include_directories(hidpp PUBLIC ${LIBUDEV_INCLUDE_DIRECTORIES})
+	target_include_directories(hidpp PRIVATE ${LIBUDEV_INCLUDE_DIRECTORIES})
 	target_link_libraries(hidpp ${LIBUDEV_LIBRARIES})
 elseif("${HID_BACKEND}" STREQUAL "windows")
+	target_compile_definitions(hidpp PRIVATE
+		-DUNICODE -D_UNICODE
+		-D_WIN32_WINNT=0x0600 # Use vista or later
+	)
 	target_link_libraries(hidpp setupapi hid cfgmgr32)
 elseif("${HID_BACKEND}" STREQUAL "macos")
 	target_link_libraries(hidpp stdc++ "-framework IOKit" "-framework CoreFoundation" objc)
@@ -86,9 +95,13 @@ elseif("${HID_BACKEND}" STREQUAL "macos")
 	#		The approach using find_library() didn't work
 endif()
 
-install(DIRECTORY "./" DESTINATION "include/hidpp"
+install(DIRECTORY "./" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/hidpp"
 	FILES_MATCHING PATTERN "*.h")
-install(TARGETS hidpp
-	RUNTIME DESTINATION bin
-	LIBRARY DESTINATION lib)
-
+install(TARGETS hidpp EXPORT hidpp-config
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(EXPORT hidpp-config
+	NAMESPACE hidpp::
+	DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/hidpp"
+)

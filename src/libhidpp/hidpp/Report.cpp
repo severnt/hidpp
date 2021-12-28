@@ -255,10 +255,10 @@ bool Report::checkErrorMessage10 (uint8_t *sub_id,
 bool Report::checkErrorMessage20 (uint8_t *feature_index,
 				  unsigned int *function,
 				  unsigned int *sw_id,
-				  uint8_t *error_code) const
+				  uint8_t *error_code,
+				  std::vector<uint8_t> *error_data) const
 {
-	if (static_cast<Type> (_data[Offset::Type]) != Long ||
-	    _data[Offset::SubID] != HIDPP20::ErrorMessage)
+	if (_data[Offset::SubID] != HIDPP20::ErrorMessage)
 		return false;
 
 	if (feature_index)
@@ -269,6 +269,15 @@ bool Report::checkErrorMessage20 (uint8_t *feature_index,
 		*sw_id = _data[4] & 0x0F;
 	if (error_code)
 		*error_code = _data[5];
+
+	if (error_data)
+	{
+		size_t offset = _data.size() - 1;
+		while(offset >= 6 && _data[offset] == 0x00)		// Look for the last non-zero byte
+			--offset;
+		*error_data = { _data.data() + 6, _data.data() + offset + 1 };	// Copy the error data
+	}
+
 	return true;
 }
 

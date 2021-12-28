@@ -19,6 +19,7 @@
 #ifndef LIBHIDPP_HIDPP10_DEFS_H
 #define LIBHIDPP_HIDPP10_DEFS_H
 
+#include <cstddef>
 #include <cstdint>
 // #include <stdlib.h> // Had to add this for usages of std::size_t to compile under macOS
 #include <cstddef> // Use this instead of stdlib.h for M1 compatibility. See https://github.com/cvuchener/hidpp/issues/17#issuecomment-897576568

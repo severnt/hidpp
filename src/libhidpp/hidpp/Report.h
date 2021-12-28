@@ -92,6 +92,11 @@ public:
 		virtual const char *what () const noexcept;
 	};
 
+#ifdef _MSC_VER
+	// MSVC's promise/future require default constructible types
+	Report () = default;
+#endif
+
 	/**
 	 * Build the report by copying the raw data.
 	 *
@@ -252,12 +257,13 @@ public:
 	 * \param function	The function of the report responsible for the error.
 	 * \param sw_id		The software ID of the report responsible for the error.
 	 * \param error_code	The error code of the error.
+	 * \param error_data	Additional error data sent by the device.
 	 *
 	 * \return \c true if the report is a HID++ 2.0 error, \c false otherwise.
 	 *
 	 * \sa HIDPP20::Error
 	 */
-	bool checkErrorMessage20 (uint8_t *feature_index, unsigned int *function, unsigned int *sw_id, uint8_t *error_code) const;
+	bool checkErrorMessage20 (uint8_t *feature_index, unsigned int *function, unsigned int *sw_id, uint8_t *error_code, std::vector<uint8_t> *error_data = nullptr) const;
 
 	/**\}*/
 
