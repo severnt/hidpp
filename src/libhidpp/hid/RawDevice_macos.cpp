@@ -228,7 +228,8 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Setup reportBuffer
     CFIndex reportBufferSize = _p->maxInputReportSize;
-    uint8_t reportBuffer[reportBufferSize];
+    // uint8_t reportBuffer[reportBufferSize]; // This crashes on M1 MacBook / Monterey. Maybe it's a stack overflow? Edit: using heap memory instead (malloc) fixes this.
+    uint8_t *reportBuffer = (uint8_t *) malloc(reportBufferSize * sizeof(uint8_t));
     memset(reportBuffer, 0, reportBufferSize); // Init with 0s
 
     // Init lastInputReportLength
@@ -326,8 +327,11 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         size_t assignLength = std::min<size_t>(report.size(), _p->lastInputReportLength);
         report.assign(reportBuffer, reportBuffer + assignLength);
 
-        returnValue =  assignLength;
+        returnValue = assignLength;
     }
+
+    // Free reportBuffer
+    free(reportBuffer);
 
     // Reset preventNextRead
     _p->preventNextRead = false; // Resetting this down here to prevent possible race conditions
