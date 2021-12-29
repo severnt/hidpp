@@ -55,6 +55,15 @@ struct RawDevice::PrivateImpl
 
     dispatch_queue_t inputQueue;
 
+    static void nullifyValues(RawDevice *dev) {
+        dev->_p->iohidDevice = nullptr;
+        dev->_p->maxInputReportSize = 0;
+        dev->_p->maxOutputReportSize = 0;
+        dev->_p->inputQueue = nullptr;
+
+        dev->_p->initState(dev);
+    }
+
     // State
 
     CFRunLoopRef inputReportRunLoop;
@@ -81,16 +90,6 @@ struct RawDevice::PrivateImpl
     // Concurrency
     std::mutex mutexLock;
     std::condition_variable stopWaitingForInput;
-
-    // Helper functions
-
-    static void nullifyValues(RawDevice *dev) {
-        dev->_p->iohidDevice = nullptr;
-        dev->_p->maxInputReportSize = 0;
-        dev->_p->maxOutputReportSize = 0;
-
-        dev->_p->initState(dev);
-    }
 
     // Read input reports
     //  Should be active throughout the lifetime of this object
@@ -466,7 +465,6 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Debug
-
     timeout = 5000;
 
     // Lock
@@ -494,13 +492,11 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     double lastInputReportTimeBeforeWaiting = _p->lastInputReportTime;
 
-
     if ((Utility_macos::timestamp() - lastInputReportTimeBeforeWaiting) <= lookbackThreshold) {
         // Last receive report is still fresh enough. Return that instead of waiting.
         Log::debug() << "Recent event already queued up for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
     } else {
         // Wait for next input report
-
 
         // Acquire thread lock
         //  Is automatically destroyed and unlocked when the scope exits (I think?)
