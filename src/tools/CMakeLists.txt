@@ -41,6 +41,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 		hidpp20-mouse-event-test
 		hidpp20-raw-touchpad-driver
 	)
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")# Not sure if this works
+	set(CMAKE_OSX_ARCHITECTURES arm64;x86_64)
 endif()
 
 foreach(TOOL_NAME ${TOOLS})

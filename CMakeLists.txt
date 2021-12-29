@@ -35,6 +35,7 @@ elseif("${HID_BACKEND}" STREQUAL "macos")
 	link_directories(${TINYXML2_LIBRARY_DIRS}) 
 	# 	^ Prevent `ld: library not found for -ltinyxml2`
 	#		Src: https://stackoverflow.com/q/60362476/10601702
+	set(CMAKE_OSX_ARCHITECTURES arm64;x86_64)
 else()
 	message(FATAL_ERROR "HID_BACKEND is invalid.")
 endif()

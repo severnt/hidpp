@@ -93,6 +93,7 @@ elseif("${HID_BACKEND}" STREQUAL "macos")
 	target_link_libraries(hidpp stdc++ "-framework IOKit" "-framework CoreFoundation" objc)
 	# 	^ Src: https://stackoverflow.com/a/25286420/10601702
 	#		The approach using find_library() didn't work
+	set( CMAKE_OSX_ARCHITECTURES arm64;x86_64)
 endif()
 
 install(DIRECTORY "./" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/hidpp"
