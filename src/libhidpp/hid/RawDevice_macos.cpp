@@ -41,8 +41,7 @@ extern "C" { // This needs to be declared after `using namespace HID` for some r
 #include <IOKit/hid/IOHIDDevice.h>
 }
 
-// PrivateImpl
-//  Why do we use the PrivateImpl struct instead of private member variables or namespace-less variable?
+// Pimpl
 
 struct RawDevice::PrivateImpl
 {
@@ -75,11 +74,6 @@ struct RawDevice::PrivateImpl
     std::atomic<bool> waitingForInputWasInterrupted; 
     std::atomic<bool> inputRunLoopIsRunning;
 
-    // Concurrency
-    std::mutex mutexLock;
-    std::condition_variable stopWaitingForInput;
-    std::condition_variable inputRunLoopStarted;
-
     static void initState(RawDevice *dev) {
 
         dev->_p->inputReportRunLoop = nullptr;
@@ -92,19 +86,25 @@ struct RawDevice::PrivateImpl
         dev->_p->inputRunLoopIsRunning = false;
     }
 
+    // Concurrency
+
+    std::mutex mutexLock;
+    std::condition_variable shouldStopWaitingForInput;
+    std::condition_variable inputRunLoopStarted;
+
     // Dispatch queue config
 
-    static dispatch_queue_attr_t getDispatchQueueAttrs() {
+    static dispatch_queue_attr_t getInputReportQueueAttrs() {
         return dispatch_queue_attr_make_with_qos_class(NULL, QOS_CLASS_USER_INITIATED, -1);
     }
-    static std::string getDispatchQueueLabel(RawDevice *dev) {
+    static std::string getInputReportQueueLabel(RawDevice *dev) {
         char queueLabel[1000];
         sprintf(queueLabel, "com.cvuchener.hidpp.input-reports.%s", Utility_macos::IOHIDDeviceGetDebugIdentifier(dev->_p->iohidDevice));
         return std::string(queueLabel);
     }
 
     // Read input reports
-    //  Should be active throughout the lifetime of this object
+    //  Read thread should be active throughout the lifetime of this RawDevice
 
     static void stopReadThread(RawDevice *dev) {
         CFRunLoopStop(dev->_p->inputReportRunLoop);
@@ -152,7 +152,7 @@ struct RawDevice::PrivateImpl
                 devvv->_p->lastInputReportTime = Utility_macos::timestamp();
 
                 // Notify waiting thread
-                devvv->_p->stopWaitingForInput.notify_one(); // We assume that there's only one waiting thread
+                devvv->_p->shouldStopWaitingForInput.notify_one(); // We assume that there's only one waiting thread
 
             }, 
             dev // Pass `dev` to context
@@ -186,9 +186,14 @@ struct RawDevice::PrivateImpl
             .copyDescription = NULL,
         };
 
-        CFRunLoopObserverRef observer = CFRunLoopObserverCreate(kCFAllocatorDefault, kCFRunLoopEntry | kCFRunLoopExit, false, 0, 
+        CFRunLoopObserverRef observer = CFRunLoopObserverCreate(
+            kCFAllocatorDefault, 
+            kCFRunLoopEntry | kCFRunLoopExit, 
+            false, 
+            0, 
             [](CFRunLoopObserverRef observer, CFRunLoopActivity activity, void *info){
                 RawDevice *devvv = (RawDevice *)info;
+
                 if (activity == kCFRunLoopEntry) {
                     devvv->_p->inputRunLoopIsRunning = true;
                     devvv->_p->inputRunLoopStarted.notify_one();
@@ -247,6 +252,7 @@ struct RawDevice::PrivateImpl
 
         // Tear down runLoop 
         //  Edit: disabling for now since it accesses _p which can lead to crash when RunLoopStop() is called from the deconstructor
+        
         return;
 
         Log::debug() << "Tearing down runloop" << std::endl;
@@ -298,7 +304,7 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
     // ^ Copy iohidDevice. I'm not sure this way of copying works
     _p->maxInputReportSize = other._p->maxInputReportSize;
     _p->maxOutputReportSize = other._p->maxOutputReportSize;
-    _p->inputQueue = dispatch_queue_create(_p->getDispatchQueueLabel(this).c_str(), _p->getDispatchQueueAttrs());
+    _p->inputQueue = dispatch_queue_create(_p->getInputReportQueueLabel(this).c_str(), _p->getInputReportQueueAttrs());
 
     // Reset state
     _p->initState(this);
@@ -355,12 +361,12 @@ RawDevice::~RawDevice(){
 RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>()) {
     // Construct device from path
 
-    // Init pimpl
-    _p->initState(this);
-
     // Lock
     //  This only unlocks once the readThread has set up its runLoop
     std::unique_lock lock(_p->mutexLock);
+
+    // Init pimpl
+    _p->initState(this);
 
     // Declare vars
     kern_return_t kr;
@@ -413,12 +419,10 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _p->maxOutputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxOutputReportSizeKey));
 
     // Create dispatch queue
-    dispatch_queue_attr_t attrs = _p->getDispatchQueueAttrs();
-    std::string queueLabel = _p->getDispatchQueueLabel(this);
-    _p->inputQueue = dispatch_queue_create(queueLabel.c_str(), attrs);
+    _p->inputQueue = dispatch_queue_create(_p->getInputReportQueueLabel(this).c_str(), _p->getInputReportQueueAttrs());
 
     // Start listening to input on queue
-    dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC * 0.0), _p->inputQueue, this, [](void *context) {
+    dispatch_async_f(_p->inputQueue, this, [](void *context) {
         RawDevice *thisss = (RawDevice *)context;
         thisss->_p->readThread(thisss);
     });
@@ -476,14 +480,14 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
-    // Debug
-    timeout = 5000;
-
     // Lock
     std::unique_lock lock(_p->mutexLock);
 
     // Debug
     Log::debug() << "readReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
+
+    // Timeout needs to be longer on my M1 MBP
+    timeout *= 3;
 
     // Define constant
     double lookbackThreshold = 1 / 100.0; // If a report occured no more than `lookbackThreshold` seconds ago, then we use it.
@@ -517,8 +521,21 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         // Wait for report in a loop
         while (true) {
             
+            // Debug
+            Log::debug() << "Wait for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
+
+            // Ignore read
+            //  Theres a race condition if ignoreNextRead is set to true after this func checks for _p->ignoreNextRead (its set in interruptRead()) but before this func starts wait for input. But this is super unlikely and doesn't have bad consequences.
+            if (_p->ignoreNextRead) {
+                _p->ignoreNextRead = false;
+                break;
+            }
+            // Wait
+            _p->waitingForInput = true; // Should only be mutated right here.
+            timeoutStatus = _p->shouldStopWaitingForInput.wait_until(lock, timeoutTime); // Maybe we should use an extra lock here that just synchronizes readReport() and the readThread()? Might be faster and prevent deadlocks. (In case there are any deadlocks)
+            _p->waitingForInput = false;
+
             // Check state
-            //  We check state first (instead of waiting first) to minimize race cond where a new _p->lastInputReport comes in before we reach here but after deciding that we wait for the next report. Should probably use a mutex instead. If this race cond occurs, we miss a report.
             bool newEventReceived = _p->lastInputReportTime > lastInputReportTimeBeforeWaiting;
             bool timedOut = timeoutStatus == std::cv_status::timeout ? true : false; // ? Possible race condition if the wait is interrupted due to spurious wakeup but then the timeoutTime is exceeded before we reach here. But this is very unlikely and doesn't have bad consequences.
             bool interrupted = _p->waitingForInputWasInterrupted; 
@@ -531,7 +548,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
                 // Debug state
                 if (newEventReceived + timedOut + interrupted > 1) {
-                    Log::warning() << "Waiting for inputReport was interrupted with WEIRD state: newReport: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
+                    Log::warning() << "Waiting for inputReport was stopped with WEIRD state: newReport: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
                 } else {
                     Log::debug() << "Waiting for inputReport stopped with state: newReport: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
                 }
@@ -539,20 +556,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
                 // Break loop
                 break;
             }
-
-            // Debug
-            Log::debug() << "Wait for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
-
-            // Ignore read
-            //  Theres a race condition if ignoreNextRead is set to true after this func checks for _p->ignoreNextRead (its set in interruptRead()) but before this func starts wait for input. But this is super unlikely and doesn't have bad consequences.
-            if (_p->ignoreNextRead) {
-                _p->ignoreNextRead = false;
-                return 0;
-            }
-            // Wait
-            _p->waitingForInput = true; // Should only be mutated right here.
-            timeoutStatus = _p->stopWaitingForInput.wait_until(lock, timeoutTime); // Maybe we should use an extra lock here that just synchronizes readReport() and the readThread()? Might be faster and prevent deadlocks. (In case there are any deadlocks)
-            _p->waitingForInput = false;
         }
     }
 
@@ -560,7 +563,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     int returnValue;
 
-    if ((Utility_macos::timestamp() - _p->lastInputReportTime) <= lookbackThreshold) { // Reading was successful
+    if ((Utility_macos::timestamp() - _p->lastInputReportTime) <= lookbackThreshold) { // Reading was successful. Not sure if this is the best way to check if reading was successful. It might be more robust than using the `newEventReceived` flag.
 
         // Write result to the `report` argument and return length
         report = _p->lastInputReport;
@@ -582,7 +585,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 void RawDevice::interruptRead() {
 
     // Maybe we should use _p->mutexLock here? Make sure there are no race conditions!
-    //  Edit: I've thought about it and there are some minor race conds but they aren't a problem I think.
+    //  Edit: I've thought about it and there are some race conds but they unlikely and don't have bad consequences.
 
     // Debug
     Log::debug() << "interruptRead called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
@@ -594,7 +597,7 @@ void RawDevice::interruptRead() {
     // Stop readReport() from waiting, if it's waiting
 
         _p->waitingForInputWasInterrupted = true;
-        _p->stopWaitingForInput.notify_one();
+        _p->shouldStopWaitingForInput.notify_one();
     } else {
         // If readReport() is not currently waiting, ignore the next call to readReport()
         //  This is the expected behaviour according to https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
