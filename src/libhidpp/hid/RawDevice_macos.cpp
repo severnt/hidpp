@@ -125,6 +125,8 @@ struct RawDevice::PrivateImpl
             _p->maxInputReportSize,
             [] (void *context, IOReturn result, void *sender, IOHIDReportType type, uint32_t reportID, uint8_t *report, CFIndex reportLength) {
                 
+                // Maybe we should use _p->mutexLock here? Make sure there are no race conditions!
+                
                 //  Get dev from context
                 //  ^ We can't capture `dev` or anything else, because then the enclosing lambda wouldn't decay to a pure c function
                 RawDevice *devvv = static_cast<RawDevice *>(context);
@@ -280,7 +282,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _p->initState(this);
 
     // Lock
-    //  This only onlocks once the readThread has set up its runLoop
+    //  This only unlocks once the readThread has set up its runLoop
     std::unique_lock lock(_p->mutexLock);
 
     // Declare vars
@@ -361,7 +363,10 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
                                                _report_desc(other._report_desc)
 {
     // Copy constructor
-    
+
+    // Lock
+    std::unique_lock lock(_p->mutexLock);
+
     // Copy attributes from `other` to `this`
 
     io_service_t service = IOHIDDeviceGetService(other._p->iohidDevice);
@@ -381,6 +386,9 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
 {
     // Move constructor
     // How to write move constructor: https://stackoverflow.com/a/43387612/10601702
+
+    // Lock
+    std::unique_lock lock(_p->mutexLock);
 
     // Assign values from `other` to `this` (without copying them)
 
@@ -457,6 +465,10 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
+    // Debug
+
+    timeout = 5000;
+
     // Lock
     std::unique_lock lock(_p->mutexLock);
 
@@ -464,7 +476,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     Log::debug() << "readReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
     // Define constant
-    double lookbackThreshold = 1 / 1000.0; // If a report occured no more than `lookbackThreshold` seconds ago, then we use it.
+    double lookbackThreshold = 1 / 100.0; // If a report occured no more than `lookbackThreshold` seconds ago, then we use it.
 
     // Convert timeout to seconds instead of milliseconds
     double timeoutSeconds = timeout / 1000.0;
@@ -505,9 +517,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         // Wait for report in a loop
         while (true) {
             
-            Log::debug() << "Entering input wait loop for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
-
-
             // Check state
             bool newEventReceived = _p->lastInputReportTime > lastInputReportTimeBeforeWaiting;
             bool timedOut = timeoutStatus == std::cv_status::timeout ? true : false; // ? Possible race condition if the wait is interrupted due to spurious wakeup but then the timeoutTime is exceeded before we reach here. 
@@ -521,15 +530,17 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
                 // Debug state
                 if (newEventReceived + timedOut + interrupted > 1) {
-                    Log::warning() << "Waiting for inputReport was interrupted with WEIRD state: newEvent: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
+                    Log::warning() << "Waiting for inputReport was interrupted with WEIRD state: newReport: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
                 } else {
-                    Log::debug() << "Waiting for inputReport was interrupted with state: newEvent: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
+                    Log::debug() << "Waiting for inputReport stopped with state: newReport: " << newEventReceived << " timedOut: " << timedOut << " interrupted: " << interrupted << std::endl;
                 }
 
                 // Break loop
                 break;
             }
 
+            Log::debug() << "Wait for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
+            
             // Wait
             timeoutStatus = _p->stopWaitingForInput.wait_until(lock, timeoutTime);
         }
@@ -562,11 +573,14 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
 void RawDevice::interruptRead() {
 
+    // Maybe we should use _p->mutexLock here? Make sure there are no race conditions!
+
+    // Debug
     Log::debug() << "interruptRead called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
     // Ignore the next inputReport
     //  This is the expected behaviour according to https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
-    //  Question for Clement: should we still wait in readReport() if this is true?
+    //  Question for Clement: should we still wait in readReport() if ignoreNextInputReport is true?
     _p->ignoreNextInputReport = true;
 
     // Stop readReport() from waiting
