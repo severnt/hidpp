@@ -125,18 +125,23 @@ HID::ReportDescriptor Utility_macos::IOHIDDeviceGetReportDescriptor(IOHIDDeviceR
 // Other IOHIDDevice helpers
 
 const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
-    
-    // return CFStringToString((CFStringRef)IOHIDDeviceGetProperty(device, CFSTR(kIOPathKey))).c_str(); 
-    //  ^ Not sure if this would work
 
-    // Get service
-    io_service_t service = IOHIDDeviceGetService(device);
-    // Get cfPath
-    CFStringRef cfPath = IORegistryEntryCopyPath(service, kIOServicePlane);
-    // Get path
-    const char *path = CFStringGetCStringPtr(cfPath, kCFStringEncodingUTF8);
+    // Option 2: Use IORegistryEntry ID
 
-    return path;
+    return Utility_macos::IOHIDDeviceGetUniqueIdentifier(device);
+
+    // Option 1: Use IORegistryEntry path
+    //  These paths are way to long and annoying to deal with
+
+    // // Get service
+    // io_service_t service = IOHIDDeviceGetService(device);
+    // // Get cfPath
+    // //  IORegistryEntryCopyPath allows for unlimited path length (not just 500 characters), which avoids crashes, but it's not available on older macOS verisons
+    // CFStringRef cfPath = IORegistryEntryCopyPath(service, kIOServicePlane);
+    // // Get path
+    // const char *path = CFStringGetCStringPtr(cfPath, kCFStringEncodingUTF8);
+
+    // return path;
 }
 
 void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop) {
@@ -163,16 +168,11 @@ void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoop
 }
 
 const char * Utility_macos::IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device) {
-    // This is currently the device path. We should base this on the registryEntryID at some point, because of issues with long paths (see HIDAPI Github issues)
-
-    return Utility_macos::IOHIDDeviceGetPath(device);
-
-}
-const char * Utility_macos::IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device) {
-    // Human readable identifier that doesn't clog up the debug output too much
+    // This used to be the device path. Now it's the registryEntryID, because of issues with long paths (see HIDAPI Github issues)
 
     // Get service
     io_service_t service = IOHIDDeviceGetService(device);
+    
     // Get id
     uint64_t id;
     IORegistryEntryGetRegistryEntryID(service, &id);
@@ -181,8 +181,16 @@ const char * Utility_macos::IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device)
     std::string id_str_cpp = std::to_string(id);
     char *id_str = (char *) malloc(id_str_cpp.length() * sizeof(char));
     strcpy(id_str, id_str_cpp.c_str());
+    
     // Return
     return id_str;
+
+}
+const char * Utility_macos::IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device) {
+    // Human readable identifier that doesn't clog up the debug output too much
+    //  Since we're using the simple and short registryEntryID as the IOHIDDeviceGetUniqueIdentifier, this is now the same as uniqueIdentifier
+
+    return Utility_macos::IOHIDDeviceGetUniqueIdentifier(device);
 }
 
 // Other

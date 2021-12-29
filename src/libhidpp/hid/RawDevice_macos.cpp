@@ -58,7 +58,7 @@ struct RawDevice::PrivateImpl
     // State
 
     CFRunLoopRef inputReportRunLoop;
-    std::vector<uint8_t> lastInputReport; // TODO: make atomic
+    std::vector<uint8_t> lastInputReport; // Can't make this atomic, use explicit mutex instead
 
     std::atomic<bool> ignoreNextInputReport;
     std::atomic<bool> waitingForInput; 
@@ -287,18 +287,9 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     kern_return_t kr;
     IOReturn ior;
 
-    // Convert path to CF
-    CFStringRef cfPath = Utility_macos::stringToCFString(path);
+    // Convert path to registryEntryId (int64_t)
+    int64_t entryID = std::stoll(path);
 
-    // Get registryEntry from path
-    const io_registry_entry_t registryEntry = IORegistryEntryCopyFromPath(kIOMasterPortDefault, cfPath);
-
-    // Get service from registryEntry
-    uint64_t entryID;
-    kr = IORegistryEntryGetRegistryEntryID(registryEntry, &entryID);
-    if (kr != KERN_SUCCESS) {
-        // TODO: Throw an error or something
-    }
     CFDictionaryRef matchDict = IORegistryEntryIDMatching(entryID);
     io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matchDict);
     if (service == 0) { // Idk what this returns when it can't find a matching service
