@@ -76,6 +76,17 @@
         "utility": "cpp",
         "filesystem": "cpp",
         "__functional_03": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "__bits": "cpp",
+        "clocale": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "numbers": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "semaphore": "cpp",
+        "*.tcc": "cpp",
+        "memory_resource": "cpp",
+        "stop_token": "cpp"
     }
 }

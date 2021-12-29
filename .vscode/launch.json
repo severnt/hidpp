@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/src/tools/${input:pickTool}",
-            "args": [],
+            "args": ["-vdebug"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
@@ -27,7 +27,7 @@
             "options": ["hidpp-check-device", "hidpp-list-devices", "hidpp-list-features", "hidpp-mouse-resolution", "hidpp-persistent-profiles", 
                 "hidpp10-active-profile", "hidpp10-dump-page", "hidpp10-load-temp-profile", "hidpp10-raw-command", "hidpp10-write-page", 
                 "hidpp20-call-function", "hidpp20-dump-page", "hidpp20-led-control", "hidpp20-onboard-profiles-get-description", "hidpp20-reprog-controls", "hidpp20-write-data", "hidpp20-write-page"]
-        }
+        },
         {
             "id": "argument",
             "description": "Enter the command-line argument",

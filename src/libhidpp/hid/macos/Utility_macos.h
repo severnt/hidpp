@@ -46,4 +46,5 @@ public:
     static double timestamp();
 
     static const char * IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device);
+    static const char * IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device);
 };

@@ -45,16 +45,39 @@ extern "C" { // This needs to be declared after `using namespace HID` for some r
 
 struct RawDevice::PrivateImpl
 {
-    IOHIDDeviceRef iohidDevice;
 
+    // Attributes
+
+    IOHIDDeviceRef iohidDevice;
     CFIndex maxInputReportSize;
     CFIndex maxOutputReportSize;
 
-    CFIndex lastInputReportLength;
-    CFRunLoopRef inputReportRunLoop;
-    bool readIsBlocking;
-    bool preventNextRead;
+    // state
+
+    CFIndex lastInputReportLength = 0;
+    CFRunLoopRef inputReportRunLoop = NULL;
+    bool readIsBlocking = false;
+    bool preventNextRead = false;
+
+    static void initState(RawDevice *dev) {
+        dev->_p->lastInputReportLength = 0;
+        dev->_p->inputReportRunLoop = nullptr;
+        dev->_p->readIsBlocking = false;
+        dev->_p->preventNextRead = false;
+    }
+
+    // Helper
+
+    static void nullifyValues(RawDevice *dev) {
+        dev->_p->iohidDevice = nullptr;
+        dev->_p->maxInputReportSize = 0;
+        dev->_p->maxOutputReportSize = 0;
+
+        dev->_p->initState(dev);
+    }
+
 };
+
 
 // Private constructor
 
@@ -68,6 +91,9 @@ RawDevice::RawDevice()
 
 RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>()) {
     // Construct device from path
+
+    // Init pimpl
+    _p->initState(this);
 
     // Declare vars
     kern_return_t kr;
@@ -100,12 +126,12 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // Open device
     ior = IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); // Necessary to change the state of the device
     if (ior != kIOReturnSuccess) {
-        Log::warning() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetUniqueIdentifier(_p->iohidDevice) << "\" failed with error code " << ior << std::endl;
+        Log::warning() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << "\" failed with error code " << ior << std::endl;
         
     } else {
-        // Log::info().printf("Opening the device \"%s\" succeded", Utility_macos::IOHIDDeviceGetUniqueIdentifier(_p->iohidDevice));
+        // Log::info().printf("Opening the device \"%s\" succeded", Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice));
         // ^ printf() function on Log doesn't work properly here for some reason. Shows up in vscode debug console but not in Terminal, even with the -vdebug option. Logging with the << syntax instead of printf works though. In Utility_macos the printf function works for some reason. TODO: Ask Clément about this.
-        Log::info() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetUniqueIdentifier(_p->iohidDevice) << "\" succeded" << std::endl;
+        Log::info() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << "\" succeded" << std::endl;
     }
 
     // Store IOHIDDevice in self
@@ -136,17 +162,16 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
 {
     // Copy constructor
     
-    // Copy values from `other` to `this`
+    // Copy attributes from `other` to `this`
 
     io_service_t service = IOHIDDeviceGetService(other._p->iohidDevice);
     _p->iohidDevice = IOHIDDeviceCreate(kCFAllocatorDefault, service);
     // ^ Copy iohidDevice. I'm not sure this way of copying works
     _p->maxInputReportSize = other._p->maxInputReportSize;
     _p->maxOutputReportSize = other._p->maxOutputReportSize;
-    // We don't copy the following 3 properties since they are not really device properties, but part of the state of an ongoing read, and so I think they don't make sense to copy.
-    _p->lastInputReportLength = 0;
-    _p->inputReportRunLoop = nullptr; 
-    _p->preventNextRead = false;
+
+    // Reset state
+    _p->initState(this);
 }
 
 RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
@@ -157,24 +182,17 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
     // Move constructor
     // How to write move constructor: https://stackoverflow.com/a/43387612/10601702
 
-    // Assign values from `other` to `this`
+    // Assign values from `other` to `this` (without copying them)
 
     _p->iohidDevice = other._p->iohidDevice;
     _p->maxInputReportSize = other._p->maxInputReportSize;
     _p->maxOutputReportSize = other._p->maxOutputReportSize;
-    _p->lastInputReportLength = 0;
-    _p->inputReportRunLoop = nullptr;
-    _p->preventNextRead = false;
 
-    // Nullify `other` values
+    // Init state
+    _p->initState(this);
 
-    other._p->iohidDevice = nullptr;
-    other._p->maxInputReportSize = 0;
-    other._p->maxOutputReportSize = 0;
-    other._p->lastInputReportLength = 0;
-    other._p->inputReportRunLoop = nullptr;
-    other._p->preventNextRead = false;
-
+    // Delete values in `other` (so that it can't manipulate values in `this` through dangling references)
+    other._p->nullifyValues(&other);
 }
 
 // Destructor
@@ -192,6 +210,8 @@ RawDevice::~RawDevice(){
 
 int RawDevice::writeReport(const std::vector<uint8_t> &report)
 {
+
+    Log::debug() << "writeReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
     // Guard report size
     if (report.size() > _p->maxOutputReportSize) {
@@ -222,6 +242,8 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 // readReport
 
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
+
+    Log::debug() << "readReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
     // Convert timeout to seconds instead of milliseconds
     double timeoutSeconds = timeout / 1000.0;
@@ -280,7 +302,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
         // Run runLoop
         _p->readIsBlocking = true; // Should only be mutated right here.
-        CFRunLoopRunResult runLoopResult = CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false); // It may make sense to set the last argument `returnAfterSourceHandled` to `true` since we only want to read one report and then stop the runLoop
+        CFRunLoopRunResult runLoopResult = CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeoutSeconds, false); 
+        //  ^ It may make sense to set the last argument `returnAfterSourceHandled` to `true` since we only want to read one report and then stop the runLoop
+        //      Also, what should the runLoopMode be?
         _p->readIsBlocking = false;
 
         // Analyze runLoop exit reason
@@ -326,7 +350,6 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         // Write result to the `report` argument and return length
         size_t assignLength = std::min<size_t>(report.size(), _p->lastInputReportLength);
         report.assign(reportBuffer, reportBuffer + assignLength);
-
         returnValue = assignLength;
     }
 
@@ -341,6 +364,8 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 }
 
 void RawDevice::interruptRead() {
+
+    Log::debug() << "interruptRead called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
     if (_p->readIsBlocking) { 
         // readReport() is currently blocking and waiting for a report 
