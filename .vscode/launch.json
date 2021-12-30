@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/src/tools/${input:pickTool}",
-            "args": ["-vdebug", "4294988144"],
+            "args": ["-vdebug", "4294988144", "-d0"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

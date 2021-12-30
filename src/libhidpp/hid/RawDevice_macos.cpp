@@ -140,12 +140,11 @@ struct RawDevice::PrivateImpl
                 //  ^ We can't capture `dev` or anything else, because then the enclosing lambda wouldn't decay to a pure c function
                 RawDevice *devvv = static_cast<RawDevice *>(context);
 
-                // Debug
-
-                Log::debug() << "Received input from device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(devvv->_p->iohidDevice) << std::endl;
-
                 // Lock
                 std::unique_lock lock(devvv->_p->mutexLock);
+
+                // Debug
+                Log::debug() << "Received input from device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(devvv->_p->iohidDevice) << std::endl;
 
                 // Store new report
                 devvv->_p->lastInputReport.assign(report, report + reportLength);
@@ -486,14 +485,18 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     // Debug
     Log::debug() << "readReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
-    // Timeout needs to be longer on my M1 MBP
-    timeout *= 3;
-
     // Define constant
     double lookbackThreshold = 1 / 100.0; // If a report occured no more than `lookbackThreshold` seconds ago, then we use it.
 
-    // Convert timeout to seconds instead of milliseconds
-    double timeoutSeconds = timeout / 1000.0;
+    // Preprocess timeout
+    double timeoutSeconds;
+    if (timeout < 0) {
+        // Disable timeout if negative
+        timeoutSeconds = INFINITY;
+    } else {
+        // Convert timeout to seconds instead of milliseconds
+        timeoutSeconds = timeout / 1000.0;
+    }
 
     // Wait for input
     //  Block this thread until the next inputReport is issued
@@ -509,7 +512,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     double lastInputReportTimeBeforeWaiting = _p->lastInputReportTime;
 
     if ((Utility_macos::timestamp() - lastInputReportTimeBeforeWaiting) <= lookbackThreshold) {
-        // Last receive report is still fresh enough. Return that instead of waiting.
+        // Last received report is still fresh enough. Return that instead of waiting.
         Log::debug() << "Recent event already queued up for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
     } else {
         // Wait for next input report
