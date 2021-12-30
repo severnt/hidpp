@@ -159,21 +159,23 @@ struct RawDevice::PrivateImpl
 
         // Start runLoop
 
-        // Store current runLoop        
-        _p->inputReportRunLoop = CFRunLoopGetCurrent();
-
-        // Add IOHIDDevice to runLoop.
-        //  Async callbacks for this IOHIDDevice will be delivered to this runLoop
-        //  We need to call this before CFRunLoopRun, because if the runLoop has nothing to do, it'll immediately exit when we try to run it.
-        IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, kCFRunLoopCommonModes);
-
-        // Debug
-
-        Log::debug() << "Starting inputRunLoop on device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
-
         // Params
 
         CFRunLoopMode runLoopMode = kCFRunLoopDefaultMode;
+
+        // Store current runLoop      
+
+        _p->inputReportRunLoop = CFRunLoopGetCurrent();
+
+        // Add IOHIDDevice to runLoop.
+
+        //  Async callbacks for this IOHIDDevice will be delivered to this runLoop
+        //  We need to call this before CFRunLoopRun, because if the runLoop has nothing to do, it'll immediately exit when we try to run it.
+        IOHIDDeviceScheduleWithRunLoop(_p->iohidDevice, _p->inputReportRunLoop, runLoopMode);
+
+        // Debug
+        
+        Log::debug() << "Starting inputRunLoop on device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
         // Observer
 
