@@ -30,7 +30,6 @@ class Utility_macos {
 
 public:
     static void stringToIOString(std::string string, io_string_t &ioString);
-    static CFStringRef stringToCFString(std::string string);
 
     static long CFNumberToInt(CFNumberRef cfNumber);
     static std::string CFStringToString(CFStringRef cfString);

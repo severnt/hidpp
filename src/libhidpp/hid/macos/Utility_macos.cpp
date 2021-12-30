@@ -32,10 +32,6 @@ void Utility_macos::stringToIOString(std::string string, io_string_t &ioString) 
     strcpy(ioString, string.c_str());
 }
 
-CFStringRef Utility_macos::stringToCFString(std::string string) {
-    return CFStringCreateWithCString(kCFAllocatorDefault, string.c_str(), kCFStringEncodingUTF8);
-}
-
 // Convert Cocoa -> Cpp
 
 long Utility_macos::CFNumberToInt(CFNumberRef cfNumber) {
@@ -144,29 +140,6 @@ const char * Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
     // return path;
 }
 
-void Utility_macos::stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop) {
-    // This function is unused. Only to be used as reference. Delete at some point.
-
-    // Unregister input report callback
-    uint8_t reportBuffer[0]; // Passing this instead of NULL to silence warnings
-    CFIndex reportLength = 0;
-    IOHIDDeviceRegisterInputReportCallback(device, reportBuffer, reportLength, NULL, NULL); 
-    //  ^ Passing NULL for the callback unregisters the previous callback.
-    //      Not sure if redundant when already calling IOHIDDeviceUnscheduleFromRunLoop.
-
-    // Remove device from runLoop
-    IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, kCFRunLoopCommonModes);
-
-    // If there is nothing else scheduled on the runLoop it should exit automatically after this.
-    //  And if there's nothing else scheduled on the thread which the runLoop is running on, it should exit, as well.
-
-    // Force-stop runLoop - probably unnecessary
-    if (runLoop != NULL) {
-        CFRunLoopStop(runLoop);
-        runLoop = NULL;
-    }
-}
-
 const char * Utility_macos::IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device) {
     // This used to be the device path. Now it's the registryEntryID, because of issues with long paths (see HIDAPI Github issues)
 
@@ -177,7 +150,7 @@ const char * Utility_macos::IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device
     uint64_t id;
     IORegistryEntryGetRegistryEntryID(service, &id);
     // Convert to string
-    //  Little cumbersom because id_str.c_str() will be deallocated when id_str goes out of scope
+    //  Little cumbersome because id_str.c_str() will be deallocated when id_str goes out of scope
     std::string id_str_cpp = std::to_string(id);
     char *id_str = (char *) malloc(id_str_cpp.length() * sizeof(char));
     strcpy(id_str, id_str_cpp.c_str());
