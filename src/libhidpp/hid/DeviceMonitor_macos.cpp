@@ -60,9 +60,9 @@ DeviceMonitor::DeviceMonitor ():
 			// Get this
 			DeviceMonitor *thisss = static_cast<DeviceMonitor *>(context);
 			// Get path
-			const char *path = Utility_macos::IOHIDDeviceGetPath(device);
+			std::string path = Utility_macos::IOHIDDeviceGetPath(device);
 			// Add device
-			thisss->addDevice(path);
+			thisss->addDevice(path.c_str());
 		}, 
 		this
 	);
@@ -74,9 +74,9 @@ DeviceMonitor::DeviceMonitor ():
 			// Get this
 			DeviceMonitor *thisss = static_cast<DeviceMonitor *>(context);
 			// Get path
-			const char *path = Utility_macos::IOHIDDeviceGetPath(device);
+			std::string path = Utility_macos::IOHIDDeviceGetPath(device);
 			// Remove device
-			thisss->removeDevice(path);
+			thisss->removeDevice(path.c_str());
 		}, 
 		NULL
 	);
@@ -117,9 +117,9 @@ void DeviceMonitor::enumerate () {
 		// Get device
 		IOHIDDeviceRef device = deviceArray[i];
 		// Get path
-		const char *path = Utility_macos::IOHIDDeviceGetPath(device);
+		std::string path = Utility_macos::IOHIDDeviceGetPath(device);
 		// Add
-		addDevice(path);
+		addDevice(path.c_str());
 	}
 }
 

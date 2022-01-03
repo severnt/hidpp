@@ -29,6 +29,7 @@ extern "C" {
 class Utility_macos {
 
 public:
+
     static void stringToIOString(std::string string, io_string_t &ioString);
 
     static long CFNumberToInt(CFNumberRef cfNumber);
@@ -39,11 +40,11 @@ public:
     static std::string IOHIDDeviceGetStringProperty(IOHIDDeviceRef device, CFStringRef key);
     static HID::ReportDescriptor IOHIDDeviceGetReportDescriptor(IOHIDDeviceRef device);
 
-    static const char * IOHIDDeviceGetPath(IOHIDDeviceRef device);
-    static void stopListeningToInputReports(IOHIDDeviceRef device, CFRunLoopRef &runLoop);
+    static std::string pathPrefix;
+    static std::string IOHIDDeviceGetPath(IOHIDDeviceRef device);
 
     static double timestamp();
 
-    static const char * IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device);
-    static const char * IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device);
+    static std::string IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device);
+    static std::string IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device);
 };

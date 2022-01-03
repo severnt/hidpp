@@ -98,8 +98,10 @@ struct RawDevice::PrivateImpl
         return dispatch_queue_attr_make_with_qos_class(NULL, QOS_CLASS_USER_INITIATED, -1);
     }
     static std::string getInputReportQueueLabel(RawDevice *dev) {
-        char queueLabel[1000];
-        sprintf(queueLabel, "com.cvuchener.hidpp.input-reports.%s", Utility_macos::IOHIDDeviceGetDebugIdentifier(dev->_p->iohidDevice));
+        const char *prefix = "com.cvuchener.hidpp.input-reports.";
+        std::string debugID = Utility_macos::IOHIDDeviceGetDebugIdentifier(dev->_p->iohidDevice);
+        char queueLabel[strlen(prefix) + strlen(debugID.c_str())];
+        sprintf(queueLabel, "%s%s", prefix, debugID.c_str());
         return std::string(queueLabel);
     }
 
@@ -374,7 +376,9 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     IOReturn ior;
 
     // Convert path to registryEntryId (int64_t)
-    int64_t entryID = std::stoll(path);
+
+    // uint64_t entryID = std::stoll(path);
+    uint64_t entryID = std::strtoull(path.c_str() + strlen(Utility_macos::pathPrefix.c_str()), NULL, 10);
 
     CFDictionaryRef matchDict = IORegistryEntryIDMatching(entryID);
     io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matchDict);
