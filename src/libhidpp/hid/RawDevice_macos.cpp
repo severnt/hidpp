@@ -537,7 +537,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
             //  Theres a race condition if ignoreNextRead is set to true after this func checks for _p->ignoreNextRead (its set in interruptRead()) but before this func starts wait for input. But this is super unlikely and doesn't have bad consequences.
             if (_p->ignoreNextRead) {
                 _p->ignoreNextRead = false;
-                break;
+                return 0;
             }
             // Wait
             _p->waitingForInput = true; // Should only be mutated right here.
