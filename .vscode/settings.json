@@ -89,6 +89,5 @@
         "memory_resource": "cpp",
         "stop_token": "cpp",
         "__availability": "cpp"
-    },
-    "files.autoSave": "afterDelay"
+    }
 }
