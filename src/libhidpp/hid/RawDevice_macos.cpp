@@ -89,8 +89,8 @@ struct RawDevice::PrivateImpl
     // Concurrency
 
     std::mutex generalLock;
-    std::condition_variable shouldStopWaitingForInput;
-    std::condition_variable inputRunLoopStarted;
+    std::condition_variable shouldStopWaitingForInputSignal;
+    std::condition_variable inputRunLoopDidStartSignal;
 
     // Dispatch queue config
 
@@ -160,7 +160,7 @@ struct RawDevice::PrivateImpl
                 devvv->_p->lastInputReportTime = Utility_macos::timestamp();
 
                 // Notify waiting thread
-                devvv->_p->shouldStopWaitingForInput.notify_one(); // We assume that there's only one waiting thread
+                devvv->_p->shouldStopWaitingForInputSignal.notify_one(); // We assume that there's only one waiting thread
 
             }, 
             dev // Pass `dev` to context
@@ -206,7 +206,7 @@ struct RawDevice::PrivateImpl
 
                 if (activity == kCFRunLoopEntry) {
                     devvv->_p->inputRunLoopDidStart = true;
-                    devvv->_p->inputRunLoopStarted.notify_one();
+                    devvv->_p->inputRunLoopDidStartSignal.notify_one();
                 } else {
                     devvv->_p->inputRunLoopDidStart = false; // Not sure if useful
                 }
@@ -436,7 +436,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
 
     // Wait until inputReportRunLoop Started
     while (!_p->inputRunLoopDidStart) {
-        _p->inputRunLoopStarted.wait(lock);
+        _p->inputRunLoopDidStartSignal.wait(lock);
     }
 
     // Debug
@@ -557,7 +557,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
             // Wait
             _p->waitingForInput = true; // Should only be mutated right here.
-            timeoutStatus = _p->shouldStopWaitingForInput.wait_until(lock, timeoutTime);
+            timeoutStatus = _p->shouldStopWaitingForInputSignal.wait_until(lock, timeoutTime);
             _p->waitingForInput = false;
 
             // Check state
@@ -619,7 +619,7 @@ void RawDevice::interruptRead() {
 
         // Stop readReport() from waiting, if it's waiting
         _p->waitingForInputWasInterrupted = true;
-        _p->shouldStopWaitingForInput.notify_one();
+        _p->shouldStopWaitingForInputSignal.notify_one();
 
     } else {
         _p->ignoreNextRead = true;

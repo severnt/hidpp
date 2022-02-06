@@ -168,7 +168,7 @@ std::string Utility_macos::IOHIDDeviceGetDebugIdentifier(IOHIDDeviceRef device) 
     // Human readable identifier that doesn't clog up the debug output too much
     //  Since we're using the simple and short registryEntryID as the IOHIDDeviceGetUniqueIdentifier, this is now the same as uniqueIdentifier
 
-    return Utility_macos::IOHIDDeviceGetUniqueIdentifier(device);
+    return Utility_macos::IOHIDDeviceGetPath(device);
 }
 
 // Other
