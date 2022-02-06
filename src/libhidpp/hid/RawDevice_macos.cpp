@@ -72,7 +72,7 @@ struct RawDevice::PrivateImpl
     std::atomic<bool> waitingForInput; 
     std::atomic<double> lastInputReportTime; 
     std::atomic<bool> waitingForInputWasInterrupted; 
-    std::atomic<bool> inputRunLoopIsRunning;
+    std::atomic<bool> inputRunLoopDidStart;
 
     static void initState(RawDevice *dev) {
 
@@ -83,12 +83,12 @@ struct RawDevice::PrivateImpl
         dev->_p->waitingForInput = false;
         dev->_p->lastInputReportTime = -1; 
         dev->_p->waitingForInputWasInterrupted = false;
-        dev->_p->inputRunLoopIsRunning = false;
+        dev->_p->inputRunLoopDidStart = false;
     }
 
     // Concurrency
 
-    std::mutex generalLock; // Used to separate Constructors, and the main interface functions (currently readReport() and writeReport())
+    std::mutex generalLock;
     std::condition_variable shouldStopWaitingForInput;
     std::condition_variable inputRunLoopStarted;
 
@@ -205,10 +205,10 @@ struct RawDevice::PrivateImpl
                 RawDevice *devvv = (RawDevice *)info;
 
                 if (activity == kCFRunLoopEntry) {
-                    devvv->_p->inputRunLoopIsRunning = true;
+                    devvv->_p->inputRunLoopDidStart = true;
                     devvv->_p->inputRunLoopStarted.notify_one();
                 } else {
-                    devvv->_p->inputRunLoopIsRunning = false; // Not sure if useful
+                    devvv->_p->inputRunLoopDidStart = false; // Not sure if useful
                 }
             }, 
             &ctx
@@ -218,11 +218,6 @@ struct RawDevice::PrivateImpl
 
         // Start runLoop
         //  Calling this blocks this thread and until the runLoop exits.
-        //  We only exit the runLoop if one of these happens
-        //      - Device sends input report
-        //      - Timeout happens
-        //      - interruptRead() is called
-        //
         // See HIDAPI https://github.com/libusb/hidapi/blob/master/mac/hid.c for reference
 
         while (true) {
@@ -440,7 +435,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     });
 
     // Wait until inputReportRunLoop Started
-    while (!_p->inputRunLoopIsRunning) {
+    while (!_p->inputRunLoopDidStart) {
         _p->inputRunLoopStarted.wait(lock);
     }
 
