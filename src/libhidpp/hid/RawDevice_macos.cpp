@@ -88,7 +88,7 @@ struct RawDevice::PrivateImpl
 
     // Concurrency
 
-    std::mutex mutexLock;
+    std::mutex generalLock; // Used to separate Constructors, and the main interface functions (currently readReport() and writeReport())
     std::condition_variable shouldStopWaitingForInput;
     std::condition_variable inputRunLoopStarted;
 
@@ -103,6 +103,13 @@ struct RawDevice::PrivateImpl
         char queueLabel[strlen(prefix) + strlen(debugID.c_str())];
         sprintf(queueLabel, "%s%s", prefix, debugID.c_str());
         return std::string(queueLabel);
+    }
+
+    // Reset input buffer
+
+    static void deleteInputBuffer(RawDevice *dev) {
+        dev->_p->lastInputReport = std::vector<uint8_t>();
+        dev->_p->lastInputReportTime = 0;
     }
 
     // Read input reports
@@ -143,7 +150,7 @@ struct RawDevice::PrivateImpl
                 RawDevice *devvv = static_cast<RawDevice *>(context);
 
                 // Lock
-                std::unique_lock lock(devvv->_p->mutexLock);
+                std::unique_lock lock(devvv->_p->generalLock);
 
                 // Debug
                 Log::debug() << "Received input from device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(devvv->_p->iohidDevice) << std::endl;
@@ -297,8 +304,8 @@ RawDevice::RawDevice(const RawDevice &other) : _p(std::make_unique<PrivateImpl>(
     std::__throw_bad_function_call();
     
     // Lock
-    std::unique_lock lock1(_p->mutexLock);
-    std::unique_lock lock2(other._p->mutexLock); // Probably not necessary
+    std::unique_lock lock1(_p->generalLock);
+    std::unique_lock lock2(other._p->generalLock); // Probably not necessary
 
     // Copy attributes from `other` to `this`
 
@@ -323,8 +330,8 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
     // How to write move constructor: https://stackoverflow.com/a/43387612/10601702
 
     // Lock
-    std::unique_lock lock1(_p->mutexLock);
-    std::unique_lock lock2(other._p->mutexLock); // Probably not necessary
+    std::unique_lock lock1(_p->generalLock);
+    std::unique_lock lock2(other._p->generalLock); // Probably not necessary
 
     // Assign values from `other` to `this` (without copying them)
 
@@ -346,7 +353,7 @@ RawDevice::RawDevice(RawDevice &&other) : _p(std::make_unique<PrivateImpl>()),
 RawDevice::~RawDevice(){
 
     // Lock
-    std::unique_lock lock(_p->mutexLock);
+    std::unique_lock lock(_p->generalLock);
 
     // Debug
     Log::debug() << "Destroying device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl; 
@@ -366,7 +373,7 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
 
     // Lock
     //  This only unlocks once the readThread has set up its runLoop
-    std::unique_lock lock(_p->mutexLock);
+    std::unique_lock lock(_p->generalLock);
 
     // Init pimpl
     _p->initState(this);
@@ -451,9 +458,14 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 {
 
     // Lock
-    std::unique_lock lock(_p->mutexLock);
+    std::unique_lock lock(_p->generalLock);
 
+    // Debug
     Log::debug() << "writeReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
+
+    // Reset input buffer
+    //  So we don't read after this expecting a response, but getting some old value from the buffer
+    _p->deleteInputBuffer(this);
 
     // Guard report size
     if (report.size() > _p->maxOutputReportSize) {
@@ -486,10 +498,24 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Lock
-    std::unique_lock lock(_p->mutexLock);
+    std::unique_lock lock(_p->generalLock);
 
     // Debug
     Log::debug() << "readReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
+
+    // Interrupt read
+    if (_p->ignoreNextRead) {
+
+        // Reset input buffer
+        //  So we don't later return the value that's queued up now. Not sure if necessary.
+        _p->deleteInputBuffer(this);
+
+        // Reset ignoreNextRead flag
+        _p->ignoreNextRead = false;
+
+        // Return invalid
+        return 0;
+    }
 
     // Define constant
     double lookbackThreshold = 1 / 100.0; // If a report occured no more than `lookbackThreshold` seconds ago, then we use it.
@@ -518,6 +544,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
     double lastInputReportTimeBeforeWaiting = _p->lastInputReportTime;
 
     if ((Utility_macos::timestamp() - lastInputReportTimeBeforeWaiting) <= lookbackThreshold) {
+
         // Last received report is still fresh enough. Return that instead of waiting.
         Log::debug() << "Recent event already queued up for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
     } else {
@@ -533,15 +560,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
             // Debug
             Log::debug() << "Wait for device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
 
-            // Ignore read
-            //  Theres a race condition if ignoreNextRead is set to true after this func checks for _p->ignoreNextRead (its set in interruptRead()) but before this func starts wait for input. But this is super unlikely and doesn't have bad consequences.
-            if (_p->ignoreNextRead) {
-                _p->ignoreNextRead = false;
-                return 0;
-            }
             // Wait
             _p->waitingForInput = true; // Should only be mutated right here.
-            timeoutStatus = _p->shouldStopWaitingForInput.wait_until(lock, timeoutTime); // Maybe we should use an extra lock here that just synchronizes readReport() and the readThread()? Might be faster and prevent deadlocks. (In case there are any deadlocks)
+            timeoutStatus = _p->shouldStopWaitingForInput.wait_until(lock, timeoutTime);
             _p->waitingForInput = false;
 
             // Check state
@@ -582,10 +603,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
         returnValue = 0;
     }
 
-    // Reset return values
-    //  Not sure if necessary. Theoretically the `lookbackTreshold` should be enough
-    _p->lastInputReport = std::vector<uint8_t>();
-    _p->lastInputReportTime = 0;
+    // Reset input buffer
+    //  Not sure if necessary. Theoretically the `lookbackTreshold` should be enough. Edit: Why would `lookbackTreshold` be enough? Coudn't there be a problem where we read the same report twice, if we don't do this?
+    _p->deleteInputBuffer(this);
 
     // Return
     return returnValue;
@@ -593,8 +613,7 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
 void RawDevice::interruptRead() {
 
-    // Maybe we should use _p->mutexLock here? Make sure there are no race conditions!
-    //  Edit: I've thought about it and there are some race conds but they unlikely and don't have bad consequences.
+    std::unique_lock lock(_p->generalLock);
 
     // Debug
     Log::debug() << "interruptRead called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
@@ -603,14 +622,13 @@ void RawDevice::interruptRead() {
 
     if (_p->waitingForInput) {
 
-    // Stop readReport() from waiting, if it's waiting
-
+        // Stop readReport() from waiting, if it's waiting
         _p->waitingForInputWasInterrupted = true;
         _p->shouldStopWaitingForInput.notify_one();
-    } else {
-        // If readReport() is not currently waiting, ignore the next call to readReport()
-        //  This is the expected behaviour according to https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
 
+    } else {
         _p->ignoreNextRead = true;
+        // ^ If readReport() is not currently waiting, we ignore the next call to readReport()
+        //      This is the expected behaviour according to https://github.com/cvuchener/hidpp/issues/17#issuecomment-896821785
     }
 }
