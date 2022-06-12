@@ -588,7 +588,9 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     int returnValue;
 
-    if ((Utility_macos::timestamp() - _p->lastInputReportTime) <= lookbackThreshold) { // Reading was successful. Not sure if this is the best way to check if reading was successful. It might be more robust than using the `newEventReceived` flag.
+    if ((Utility_macos::timestamp() - _p->lastInputReportTime) <= lookbackThreshold) { 
+        // ^ Reading was successful. Not sure if this is the best way to check if reading was successful. It might be more robust than using the `newEventReceived` flag.
+        //  Edit: Getting a new timestamp here might lead to race condition if lastInputReport was determined to be "fresh enough" above but now is not "fresh enough" anymore. 
 
         // Write result to the `report` argument and return length
         report = _p->lastInputReport;
