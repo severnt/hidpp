@@ -32,7 +32,10 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <sys/mman.h>
 #include "macos/Utility_macos.h"
+
+#include<iostream>
 
 using namespace HID;
 
@@ -95,7 +98,7 @@ struct RawDevice::PrivateImpl
     // Dispatch queue config
 
     static dispatch_queue_attr_t getInputReportQueueAttrs() {
-        return dispatch_queue_attr_make_with_qos_class(NULL, QOS_CLASS_USER_INITIATED, -1);
+        return dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, QOS_CLASS_USER_INITIATED, -1);
     }
     static std::string getInputReportQueueLabel(RawDevice *dev) {
         const char *prefix = "com.cvuchener.hidpp.input-reports.";
@@ -127,13 +130,25 @@ struct RawDevice::PrivateImpl
         // Discussion:
         // - This function is blocking. The thread that calls it becomes the read thread until stopReadThread() is called from another thread.
 
+std::cerr << "WAITx2" << std::endl;
         // Convenience
         RawDevice::PrivateImpl *_p = dev->_p.get();
+        std::cerr << "WAITx3" << std::endl;
 
         // Setup reportBuffer
         CFIndex reportBufferSize = _p->maxInputReportSize;
-        uint8_t *reportBuffer = (uint8_t *) malloc(reportBufferSize * sizeof(uint8_t));
-        memset(reportBuffer, 0, reportBufferSize); // Init with 0s
+
+        std::cerr << "WAITx4" << std::endl;
+//        uint8_t *reportBuffer = (uint8_t *) malloc(reportBufferSize * sizeof(uint8_t));
+        std::cerr << "WAITx5 " << _p->maxInputReportSize << std::endl;
+    //    memset(reportBuffer, 0, reportBufferSize); // Init with 0s
+        uint8_t *reportBuffer = (uint8_t *) mmap(0, reportBufferSize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+if(reportBuffer == MAP_FAILED) {
+        Log::error() << "Error mapping report buffer: " << std::strerror(errno) << std::endl;
+    }
+        std::cerr << "WAITx6" << std::endl;
+
+        std::cerr << "WAIT1 Starting inputRunLoop on device " << std::endl;
 
         // Setup report callback
         //  IOHIDDeviceGetReportWithCallback has a built-in timeout and might make for more straight forward code
@@ -168,6 +183,7 @@ struct RawDevice::PrivateImpl
 
         // Start runLoop
 
+Log::debug() << "WAIT2 Starting inputRunLoop on device " << std::endl;
         // Params
 
         CFRunLoopMode runLoopMode = kCFRunLoopDefaultMode;
@@ -175,6 +191,9 @@ struct RawDevice::PrivateImpl
         // Store current runLoop      
 
         _p->inputReportRunLoop = CFRunLoopGetCurrent();
+
+                
+Log::debug() << "WAIT3 Starting inputRunLoop on device " << std::endl;
 
         // Add IOHIDDevice to runLoop.
 
@@ -195,6 +214,8 @@ struct RawDevice::PrivateImpl
             .release = NULL,
             .copyDescription = NULL,
         };
+        dev->_p->inputRunLoopDidStart = true;
+        dev->_p->inputRunLoopDidStartSignal.notify_one();
 
         CFRunLoopObserverRef observer = CFRunLoopObserverCreate(
             kCFAllocatorDefault, 
@@ -205,10 +226,10 @@ struct RawDevice::PrivateImpl
                 RawDevice *devvv = (RawDevice *)info;
 
                 if (activity == kCFRunLoopEntry) {
-                    devvv->_p->inputRunLoopDidStart = true;
+                    //devvv->_p->inputRunLoopDidStart = true;
                     devvv->_p->inputRunLoopDidStartSignal.notify_one();
                 } else {
-                    devvv->_p->inputRunLoopDidStart = false; // Not sure if useful
+                    //devvv->_p->inputRunLoopDidStart = false; // Not sure if useful
                 }
             }, 
             &ctx
@@ -253,7 +274,10 @@ struct RawDevice::PrivateImpl
         }
 
         // Free reportBuffer
-        free(reportBuffer);
+//        free(reportBuffer);
+        if(munmap(reportBuffer, reportBufferSize) < 0 ) {
+        Log::error() << "Error unmapping report buffer: " << std::strerror(errno) << std::endl;
+    }
 
         // Tear down runLoop 
         //  Edit: disabling for now since it accesses _p which can lead to crash when RunLoopStop() is called from the deconstructor
@@ -394,15 +418,17 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     // Store device
     _p->iohidDevice = device;
 
+    std::cerr << "TRY: Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
+
     // Open device
     ior = IOHIDDeviceOpen(_p->iohidDevice, kIOHIDOptionsTypeNone); // Necessary to change the state of the device
     if (ior != kIOReturnSuccess) {
-        Log::warning() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << "\" failed with error code " << ior << std::endl;
+        std::cerr << "Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << "\" failed with error code " << ior << std::endl;
         
     } else {
         // Log::info().printf("Opening the device \"%s\" succeded", Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice));
         // ^ printf() function on Log doesn't work properly here for some reason. Shows up in vscode debug console but not in Terminal, even with the -vdebug option. Logging with the << syntax instead of printf works though. In Utility_macos the printf function works for some reason. TODO: Ask Clément about this.
-        Log::info() << "Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << "\" succeded" << std::endl;
+        std::cerr << "Opening the device \"" << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << "\" succeded" << std::endl;
     }
 
     // Store IOHIDDevice in self
@@ -425,19 +451,44 @@ RawDevice::RawDevice(const std::string &path) : _p(std::make_unique<PrivateImpl>
     _p->maxInputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxInputReportSizeKey));
     _p->maxOutputReportSize = Utility_macos::IOHIDDeviceGetIntProperty(device, CFSTR(kIOHIDMaxOutputReportSizeKey));
 
+    std::cerr << "TRY1"  << std::endl;
+
     // Create dispatch queue
     _p->inputQueue = dispatch_queue_create(_p->getInputReportQueueLabel(this).c_str(), _p->getInputReportQueueAttrs());
 
+    std::cerr << "TRY2"  << std::endl;
+/*
     // Start listening to input on queue
     dispatch_async_f(_p->inputQueue, this, [](void *context) {
         RawDevice *thisss = (RawDevice *)context;
         thisss->_p->readThread(thisss);
     });
+*/
+        pthread_attr_t  attr;
+    pthread_t       posixThreadID;
+    int             returnVal;
+ 
+    returnVal = pthread_attr_init(&attr);
+    assert(!returnVal);
+    returnVal = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    assert(!returnVal);
+ 
+    int     threadError = pthread_create(&posixThreadID, &attr, [](void* context) {
+        RawDevice *thisss = (RawDevice *)context;
+        std::cerr << "WAITx1" << std::endl;
+        thisss->_p->readThread(thisss);
+        return static_cast<void*>(NULL);
+    }, this);
+
+    std::cerr << "TRY3"  << std::endl;
 
     // Wait until inputReportRunLoop Started
     while (!_p->inputRunLoopDidStart) {
-        _p->inputRunLoopDidStartSignal.wait(lock);
+        std::cerr << "TRYx1"  << std::endl;
+        _p->inputRunLoopDidStartSignal.wait(lock); //FIXME3
     }
+
+    std::cerr << "TRY4"  << std::endl;
 
     // Debug
     Log::debug() << "Constructed device " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
@@ -453,7 +504,7 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 {
 
     // Lock
-    std::unique_lock lock(_p->generalLock);
+    // std::unique_lock lock(_p->generalLock);
 
     // Debug
     Log::debug() << "writeReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
@@ -493,7 +544,7 @@ int RawDevice::writeReport(const std::vector<uint8_t> &report)
 int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
     // Lock
-    std::unique_lock lock(_p->generalLock);
+    // std::unique_lock lock(_p->generalLock);
 
     // Debug
     Log::debug() << "readReport called on " << Utility_macos::IOHIDDeviceGetDebugIdentifier(_p->iohidDevice) << std::endl;
@@ -557,12 +608,13 @@ int RawDevice::readReport(std::vector<uint8_t> &report, int timeout) {
 
             // Wait
             _p->waitingForInput = true; // Should only be mutated right here.
-            timeoutStatus = _p->shouldStopWaitingForInputSignal.wait_until(lock, timeoutTime);
+            // timeoutStatus = _p->shouldStopWaitingForInputSignal.wait_until(lock, timeoutTime);
             _p->waitingForInput = false;
 
             // Check state
             bool newEventReceived = _p->lastInputReportTime > lastInputReportTimeBeforeWaiting;
-            bool timedOut = timeoutStatus == std::cv_status::timeout ? true : false; // ? Possible race condition if the wait is interrupted due to spurious wakeup but then the timeoutTime is exceeded before we reach here. But this is very unlikely and doesn't have bad consequences.
+            //bool timedOut = timeoutStatus == std::cv_status::timeout ? true : false; // ? Possible race condition if the wait is interrupted due to spurious wakeup but then the timeoutTime is exceeded before we reach here. But this is very unlikely and doesn't have bad consequences.
+            bool timedOut = std::chrono::system_clock::now() > timeoutTime;
             bool interrupted = _p->waitingForInputWasInterrupted; 
 
             // Update state

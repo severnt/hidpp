@@ -1,7 +1,4 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
@@ -9,13 +6,26 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/src/tools/${input:pickTool}",
-            "args": [] /*["-vdebug", "4294988144", "-d0"]*/,
+            "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
             "preLaunchTask": "build_stuff"
+        },
+        {
+            "name": "C/C++: clang++ build and debug active file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}/${fileBasenameNoExtension}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "C/C++: clang++ build active file"
         }
     ],
     "inputs": [
@@ -24,17 +34,31 @@
             "description": "Pick the command-line-tool you want to debug",
             "type": "pickString",
             "default": "hidpp-list-devices",
-            "options": ["hidpp-check-device", "hidpp-list-devices", "hidpp-list-features", "hidpp-mouse-resolution", "hidpp-persistent-profiles", 
-                "hidpp10-active-profile", "hidpp10-dump-page", "hidpp10-load-temp-profile", "hidpp10-raw-command", "hidpp10-write-page", 
-                "hidpp20-call-function", "hidpp20-dump-page", "hidpp20-led-control", "hidpp20-onboard-profiles-get-description", "hidpp20-reprog-controls", "hidpp20-write-data", "hidpp20-write-page"]
+            "options": [
+                "hidpp-check-device",
+                "hidpp-list-devices",
+                "hidpp-list-features",
+                "hidpp-mouse-resolution",
+                "hidpp-persistent-profiles",
+                "hidpp10-active-profile",
+                "hidpp10-dump-page",
+                "hidpp10-load-temp-profile",
+                "hidpp10-raw-command",
+                "hidpp10-write-page",
+                "hidpp20-call-function",
+                "hidpp20-dump-page",
+                "hidpp20-led-control",
+                "hidpp20-onboard-profiles-get-description",
+                "hidpp20-reprog-controls",
+                "hidpp20-write-data",
+                "hidpp20-write-page"
+            ]
         },
         {
             "id": "enterArguments",
             "description": "Enter the command-line argument",
             "type": "promptString",
-            "default": "IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/XHC1@14/XHC1@14000000/HS02@14200000/USB Receiver@14200000/IOUSBHostInterface@2/AppleUserUSBHostHIDDevice" // My M720
-            
+            "default": "IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/XHC1@14/XHC1@14000000/HS02@14200000/USB Receiver@14200000/IOUSBHostInterface@2/AppleUserUSBHostHIDDevice"
         }
-
     ]
 }

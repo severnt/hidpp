@@ -88,6 +88,8 @@
         "*.tcc": "cpp",
         "memory_resource": "cpp",
         "stop_token": "cpp",
-        "__availability": "cpp"
-    }
+        "__availability": "cpp",
+        "unordered_set": "cpp"
+    },
+    "cmake.configureOnOpen": true
 }

@@ -21,6 +21,7 @@
 #include "Utility_macos.h"
 #include <chrono>
 #include "../../misc/Log.h"
+#include <iostream>
 
 extern "C" {
     #include <stdbool.h>
@@ -152,15 +153,21 @@ std::string Utility_macos::IOHIDDeviceGetPath(IOHIDDeviceRef device) {
 std::string Utility_macos::IOHIDDeviceGetUniqueIdentifier(IOHIDDeviceRef device) {
     // This used to be the device path. Now it's the registryEntryID, because of issues with long paths (see HIDAPI Github issues)
 
+
+    // std::cerr << "svc get uniq 1" << std::endl;
+
     // Get service
     io_service_t service = IOHIDDeviceGetService(device);
     
+    // std::cerr << "svc get uniq 2" << std::endl;
     // Get id
     uint64_t id;
     IORegistryEntryGetRegistryEntryID(service, &id);
     // Convert to string
     std::string id_str = std::to_string(id);
     
+    //std::cerr << "svc get uniq 3" << std::endl;
+
     // Return
     return id_str;
 }
